@@ -4,6 +4,7 @@
  */
 package org.fcitx.fcitx5.android.data.clipboard
 
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
@@ -39,6 +40,10 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
     private val clipboardManager = appContext.clipboardManager
 
     private val mutex = Mutex()
+    @Volatile
+    private var suppressedRemoteClipText: String? = null
+    @Volatile
+    private var suppressedRemoteClipUntil: Long = 0L
 
     var itemCount: Int = 0
         private set
@@ -103,6 +108,31 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
     suspend fun haveUnpinned() = clbDao.haveUnpinned()
 
     fun allEntries() = clbDao.allEntries()
+
+    suspend fun recentEntries(limit: Int): List<ClipboardEntry> {
+        return clbDao.recentEntries(limit.coerceIn(1, 200))
+    }
+
+    suspend fun importRemoteEntry(
+        text: String,
+        timestamp: Long,
+        sensitive: Boolean = false
+    ) {
+        val normalized = text.trim()
+        if (normalized.isBlank()) return
+        mutex.withLock {
+            suppressedRemoteClipText = normalized
+            suppressedRemoteClipUntil = System.currentTimeMillis() + 1500L
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("remote", normalized))
+            upsertEntry(
+                ClipboardEntry(
+                    text = normalized,
+                    timestamp = timestamp,
+                    sensitive = sensitive
+                )
+            )
+        }
+    }
 
     suspend fun pin(id: Int) = clbDao.updatePinStatus(id, true)
 
@@ -171,26 +201,42 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
             mutex.withLock {
                 val entry = ClipboardEntry.fromClipData(clip, transformer) ?: return@withLock
                 if (entry.text.isBlank()) return@withLock
-                try {
-                    clbDao.find(entry.text, entry.sensitive)?.let {
-                        updateLastEntry(it.copy(timestamp = entry.timestamp))
-                        clbDao.updateTime(it.id, entry.timestamp)
-                        return@withLock
-                    }
-                    val insertedEntry = clbDb.withTransaction {
-                        val rowId = clbDao.insert(entry)
-                        removeOutdated()
-                        // new entry can be deleted immediately if clipboard limit == 0
-                        clbDao.get(rowId) ?: entry
-                    }
-                    updateLastEntry(insertedEntry)
-                    updateItemCount()
-                } catch (exception: Exception) {
-                    Timber.w("Failed to update clipboard database: $exception")
-                    updateLastEntry(entry)
-                }
+                if (shouldSuppressRemoteClip(entry.text)) return@withLock
+                upsertEntry(entry)
             }
         }
+    }
+
+    private suspend fun upsertEntry(entry: ClipboardEntry) {
+        try {
+            clbDao.find(entry.text, entry.sensitive)?.let {
+                updateLastEntry(it.copy(timestamp = entry.timestamp))
+                clbDao.updateTime(it.id, entry.timestamp)
+                return
+            }
+            val insertedEntry = clbDb.withTransaction {
+                val rowId = clbDao.insert(entry)
+                removeOutdated()
+                // new entry can be deleted immediately if clipboard limit == 0
+                clbDao.get(rowId) ?: entry
+            }
+            updateLastEntry(insertedEntry)
+            updateItemCount()
+        } catch (exception: Exception) {
+            Timber.w("Failed to update clipboard database: $exception")
+            updateLastEntry(entry)
+        }
+    }
+
+    private fun shouldSuppressRemoteClip(text: String): Boolean {
+        val suppressed = suppressedRemoteClipText
+        val now = System.currentTimeMillis()
+        val matched = suppressed != null && suppressed == text && now <= suppressedRemoteClipUntil
+        if (matched || now > suppressedRemoteClipUntil) {
+            suppressedRemoteClipText = null
+            suppressedRemoteClipUntil = 0L
+        }
+        return matched
     }
 
     private suspend fun removeOutdated() {

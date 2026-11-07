@@ -8,6 +8,7 @@ import android.content.Context
 import android.text.TextUtils
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.input.bar.ui.ToolButton
 import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.utils.rippleDrawable
 import splitties.dimensions.dp
@@ -46,6 +47,10 @@ class ClipboardSuggestionUi(override val ctx: Context, private val theme: Theme)
         setTextColor(theme.altKeyTextColor)
     }
 
+    val closeButton = ToolButton(ctx, R.drawable.ic_baseline_close_24, theme).apply {
+        contentDescription = ctx.getString(android.R.string.cancel)
+    }
+
     private val layout = constraintLayout {
         val spacing = dp(4)
         add(icon, lParams(dp(20), dp(20)) {
@@ -66,9 +71,14 @@ class ClipboardSuggestionUi(override val ctx: Context, private val theme: Theme)
     }
 
     override val root = constraintLayout {
+        val spacing = dp(4)
         add(suggestionView, lParams(wrapContent, matchConstraints) {
             centerInParent()
             verticalMargin = dp(4)
+        })
+        add(closeButton, lParams(dp(28), dp(28)) {
+            after(suggestionView, spacing)
+            centerVertically()
         })
     }
 }

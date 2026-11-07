@@ -71,8 +71,10 @@ class IdleUi(
             else -> -90f * translateDirection
         }
 
+    // toolbar is always expanded; menu button only remains as private mode indicator
     val menuButton = ToolButton(ctx, R.drawable.ic_baseline_expand_more_24, theme).apply {
         iconRotation = menuButtonRotation
+        visibility = View.GONE
     }
 
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme)
@@ -138,6 +140,7 @@ class IdleUi(
     fun privateMode(activate: Boolean = true) {
         if (activate == inPrivate) return
         inPrivate = activate
+        menuButton.visibility = if (activate) View.VISIBLE else View.GONE
         updateMenuButtonIcon()
         updateMenuButtonContentDescription()
         updateMenuButtonRotation(instant = true)

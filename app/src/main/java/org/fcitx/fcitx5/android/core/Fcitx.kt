@@ -404,6 +404,19 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         // will be called in fcitx main thread
         private fun onFirstRun() {
             Timber.i("onFirstRun")
+            runCatching {
+                val availableIme = availableInputMethods()?.map { it.uniqueName }?.toSet().orEmpty()
+                val preferredImeOrder = listOf("keyboard-us", "rime").filter { it in availableIme }
+                if (preferredImeOrder.isNotEmpty()) {
+                    setEnabledInputMethods(preferredImeOrder.toTypedArray())
+                }
+
+                val globalConfig = getFcitxGlobalConfig() ?: RawConfig()
+                globalConfig.getOrCreate("Behavior").getOrCreate("ShareInputState").value = "All"
+                setFcitxGlobalConfig(globalConfig)
+            }.onFailure {
+                Timber.w(it, "Failed to apply first-run defaults")
+            }
         }
 
         /**
