@@ -76,8 +76,8 @@ abstract class BaseKeyboard(
     private val spaceSwipeThreshold = dp(18f)
     private val spaceSwipeStartDelay = 200L
 
-    // Google Pinyin: slide sensitivity NORMAL = 16dp
-    private val inputSwipeThreshold = dp(16f)
+    // Google Pinyin: slide sensitivity NORMAL = 16dp, scaled by "滑动输入的敏感度"
+    private val inputSwipeThreshold = dp(16f) * prefs.keyboard.slideSensitivity.getValue().distanceRatio
 
     // Google Pinyin: a touch is cancelled 0.3 inch beyond the key
     private val keyOutsideTolerance = 0.3f * resources.displayMetrics.xdpi

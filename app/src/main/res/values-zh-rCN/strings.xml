@@ -336,4 +336,14 @@
     <string name="spatial_correction">按落点智能纠错</string>
     <string name="spatial_correction_summary">根据每次按键的落点纠正拼音错键，与谷歌拼音相同</string>
     <string name="back_to_text_keyboard">返回</string>
+    <string name="slide_sensitivity">滑动输入的敏感度</string>
+    <string name="slide_sensitivity_low">低</string>
+    <string name="slide_sensitivity_medium_low">中等偏低</string>
+    <string name="slide_sensitivity_normal">正常</string>
+    <string name="slide_sensitivity_medium_high">中等偏高</string>
+    <string name="slide_sensitivity_high">高</string>
+    <string name="double_space_period">双击空格键可插入句号</string>
+    <string name="keyboard_height_ratio">键盘高度</string>
+    <string name="quick_settings">快捷设置</string>
+    <string name="quick_settings_entry">谷歌拼音式设置</string>
 </resources>

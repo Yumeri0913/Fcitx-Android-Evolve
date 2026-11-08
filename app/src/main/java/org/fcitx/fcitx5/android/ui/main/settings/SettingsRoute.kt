@@ -46,6 +46,9 @@ sealed class SettingsRoute : Parcelable {
     @Serializable
     data object Index : SettingsRoute()
 
+    @Serializable
+    data object Quick : SettingsRoute()
+
     /* ========== Fcitx ========== */
 
     @Serializable
@@ -188,6 +191,9 @@ sealed class SettingsRoute : Parcelable {
 
             fragment<MainFragment, Index> {
                 label = ctx.getString(R.string.app_name)
+            }
+            fragment<QuickSettingsFragment, Quick> {
+                label = ctx.getString(R.string.quick_settings)
             }
 
             /* ========== Fcitx ========== */

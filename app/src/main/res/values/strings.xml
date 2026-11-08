@@ -336,4 +336,14 @@
     <string name="spatial_correction">Touch position correction</string>
     <string name="spatial_correction_summary">Correct pinyin typos using where each key was touched, like Google Pinyin</string>
     <string name="back_to_text_keyboard">ABC</string>
+    <string name="slide_sensitivity">Swipe input sensitivity</string>
+    <string name="slide_sensitivity_low">Low</string>
+    <string name="slide_sensitivity_medium_low">Medium low</string>
+    <string name="slide_sensitivity_normal">Normal</string>
+    <string name="slide_sensitivity_medium_high">Medium high</string>
+    <string name="slide_sensitivity_high">High</string>
+    <string name="double_space_period">Double-space period</string>
+    <string name="keyboard_height_ratio">Keyboard height</string>
+    <string name="quick_settings">Quick settings</string>
+    <string name="quick_settings_entry">Google Pinyin style settings</string>
 </resources>

@@ -19,6 +19,7 @@ import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateM
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightMode
 import org.fcitx.fcitx5.android.input.keyboard.LangSwitchBehavior
+import org.fcitx.fcitx5.android.input.keyboard.SlideSensitivity
 import org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SwipeSymbolDirection
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
@@ -166,6 +167,14 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             "swipe_symbol_behavior",
             SwipeSymbolDirection.Down
         )
+        val slideSensitivity = enumList(
+            R.string.slide_sensitivity,
+            "slide_sensitivity",
+            SlideSensitivity.Normal
+        )
+        val doubleSpacePeriod = switch(
+            R.string.double_space_period, "double_space_period", true
+        )
         val longPressDelay = int(
             R.string.keyboard_long_press_delay,
             "keyboard_long_press_delay",
@@ -196,6 +205,15 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             "keyboard_height_mode",
             KeyboardHeightMode.GooglePinyin
         )
+
+        /**
+         * Google Pinyin "键盘高度": 90% (低) .. 110% (高) of its default height
+         */
+        val googlePinyinHeightRatio = int(
+            R.string.keyboard_height_ratio,
+            "google_pinyin_height_ratio",
+            100, 90, 110, "%", 5
+        ) { keyboardHeightMode.getValue() == KeyboardHeightMode.GooglePinyin }
 
         val keyboardHeightPercent: ManagedPreference.PInt
         val keyboardHeightPercentLandscape: ManagedPreference.PInt

@@ -66,6 +66,13 @@ class MainFragment : PaddingPreferenceFragment() {
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceScreen = preferenceManager.createPreferenceScreen(requireContext()).apply {
+            addCategory(R.string.quick_settings) {
+                addDestinationPreference(
+                    R.string.quick_settings_entry,
+                    R.drawable.ic_baseline_tune_24,
+                    SettingsRoute.Quick
+                )
+            }
             addCategory("Fcitx") {
                 addDestinationPreference(
                     R.string.global_options,

@@ -136,6 +136,7 @@ class InputView(
     private val focusChangeResetKeyboard by keyboardPrefs.focusChangeResetKeyboard
 
     private val keyboardHeightMode = keyboardPrefs.keyboardHeightMode
+    private val googlePinyinHeightRatio = keyboardPrefs.googlePinyinHeightRatio
     private val keyboardHeightPercent = keyboardPrefs.keyboardHeightPercent
     private val keyboardHeightPercentLandscape = keyboardPrefs.keyboardHeightPercentLandscape
     private val keyboardSidePadding = keyboardPrefs.keyboardSidePadding
@@ -148,6 +149,7 @@ class InputView(
 
     private val keyboardSizePrefs = listOf(
         keyboardHeightMode,
+        googlePinyinHeightRatio,
         keyboardHeightPercent,
         keyboardHeightPercentLandscape,
         keyboardSidePadding,
@@ -160,7 +162,8 @@ class InputView(
     private val keyboardHeightPx: Int
         get() {
             if (keyboardHeightMode.getValue() == KeyboardHeightMode.GooglePinyin) {
-                return dp(KeyboardHeightMode.googlePinyinBodyHeightDp(resources.configuration))
+                val dp = KeyboardHeightMode.googlePinyinBodyHeightDp(resources.configuration)
+                return dp(dp * googlePinyinHeightRatio.getValue() / 100)
             }
             val baseType = keyboardHeightPercentBase.getValue()
             val base = when (baseType) {

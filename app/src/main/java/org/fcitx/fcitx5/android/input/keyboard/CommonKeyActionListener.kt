@@ -5,10 +5,13 @@
 
 package org.fcitx.fcitx5.android.input.keyboard
 
+import android.os.SystemClock
+import android.view.ViewConfiguration
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.core.FcitxAPI
+import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.broadcast.PreeditEmptyStateComponent
@@ -64,6 +67,35 @@ class CommonKeyActionListener :
 
     private var backspaceSwipeState = Stopped
 
+    private val doubleSpacePeriod by kbdPrefs.doubleSpacePeriod
+    private var lastSpaceTime = 0L
+
+    /**
+     * Google Pinyin: two quick spaces after a letter, digit or Chinese character become a period
+     * ("。" in Chinese input methods, ". " otherwise). Returns true if the second space was consumed.
+     */
+    private fun maybeDoubleSpacePeriod(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        val previous = lastSpaceTime
+        lastSpaceTime = now
+        if (!doubleSpacePeriod || !preeditState.isEmpty) return false
+        if (now - previous > ViewConfiguration.getDoubleTapTimeout()) return false
+        val ic = service.currentInputConnection ?: return false
+        val before = ic.getTextBeforeCursor(2, 0)?.toString() ?: return false
+        if (before.length != 2 || before[1] != ' ') return false
+        val c = before[0]
+        val eligible = c.isLetterOrDigit() ||
+                Character.UnicodeScript.of(c.code) == Character.UnicodeScript.HAN
+        if (!eligible) return false
+        lastSpaceTime = 0L
+        val chinese = fcitx.runImmediately { inputMethodEntryCached }.languageCode.startsWith("zh")
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(1, 0)
+        ic.commitText(if (chinese) "。" else ". ", 1)
+        ic.endBatchEdit()
+        return true
+    }
+
     // there should be a new fcitx API for this
     private suspend fun FcitxAPI.commitAndReset() {
         if (inputMethodEntryCached.languageCode.startsWith("zh")) {
@@ -98,8 +130,14 @@ class CommonKeyActionListener :
                         sendKey(action.act, action.states.states, action.code)
                     }
                 }
-                is SymAction -> service.postFcitxJob {
-                    sendKey(action.sym, action.states)
+                is SymAction -> {
+                    if (action.sym.sym == FcitxKeyMapping.FcitxKey_space && maybeDoubleSpacePeriod()) {
+                        return@KeyActionListener
+                    }
+                    if (action.sym.sym != FcitxKeyMapping.FcitxKey_space) lastSpaceTime = 0L
+                    service.postFcitxJob {
+                        sendKey(action.sym, action.states)
+                    }
                 }
                 is CommitAction -> service.postFcitxJob {
                     commitAndReset()
