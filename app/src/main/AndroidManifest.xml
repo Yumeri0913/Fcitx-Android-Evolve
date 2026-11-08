@@ -150,10 +150,6 @@
             </intent-filter>
         </service>
 
-        <service
-            android:name=".remote.ClipboardSyncService"
-            android:directBootAware="true"
-            android:exported="false" />
 
         <receiver
             android:name=".remote.ClipboardPairingControlReceiver"

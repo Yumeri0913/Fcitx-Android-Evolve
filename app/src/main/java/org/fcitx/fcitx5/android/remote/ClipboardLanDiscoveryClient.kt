@@ -35,7 +35,7 @@ object ClipboardLanDiscoveryClient {
                         .put("type", "discover")
                         .put("app", APP_ID)
                         .put("replyPort", socket.localPort)
-                        .put("deviceId", ClipboardSyncService.deviceId(context))
+                        .put("deviceId", ClipboardSync.deviceId(context))
                         .toString()
                         .toByteArray(StandardCharsets.UTF_8)
                     val target = DatagramPacket(

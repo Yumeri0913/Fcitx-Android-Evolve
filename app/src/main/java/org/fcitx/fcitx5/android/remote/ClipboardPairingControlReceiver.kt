@@ -14,7 +14,7 @@ class ClipboardPairingControlReceiver : BroadcastReceiver() {
             return
         }
         Log.i(TAG, "received clipboard pairing start request")
-        ClipboardSyncService.startPairing(context)
+        ClipboardSync.startPairing(context)
     }
 
     companion object {

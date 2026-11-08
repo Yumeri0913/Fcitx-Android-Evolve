@@ -8,7 +8,7 @@ import androidx.preference.PreferenceScreen
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceFragment
-import org.fcitx.fcitx5.android.remote.ClipboardSyncService
+import org.fcitx.fcitx5.android.remote.ClipboardSync
 import org.fcitx.fcitx5.android.utils.addPreference
 import org.fcitx.fcitx5.android.utils.toast
 
@@ -20,7 +20,7 @@ class ClipboardSettingsFragment : ManagedPreferenceFragment(AppPrefs.getInstance
             R.string.clipboard_sync_start_pairing_summary
         ) {
             val ctx = requireContext()
-            ClipboardSyncService.startPairing(ctx)
+            ClipboardSync.startPairing(ctx)
             ctx.toast(R.string.clipboard_sync_pairing_started)
         }
     }

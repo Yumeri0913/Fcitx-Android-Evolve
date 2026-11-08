@@ -59,7 +59,7 @@ class ClipboardLanPairingBroadcaster(
         return JSONObject()
             .put("type", "discover_ack")
             .put("app", "insightkey_clipboard")
-            .put("deviceId", ClipboardSyncService.deviceId(context))
+            .put("deviceId", ClipboardSync.deviceId(context))
             .put("deviceName", deviceName())
             .put("httpPort", httpPort)
             .put("udpPort", udpPort)

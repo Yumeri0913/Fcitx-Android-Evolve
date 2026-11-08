@@ -72,7 +72,7 @@ class ClipboardLanDiscoveryServer(
             val response = JSONObject()
                 .put("type", TYPE_DISCOVER_ACK)
                 .put("app", APP_ID)
-                .put("deviceId", ClipboardSyncService.deviceId(context))
+                .put("deviceId", ClipboardSync.deviceId(context))
                 .put("deviceName", deviceName())
                 .put("httpPort", httpPort)
                 .put("udpPort", udpPort)
