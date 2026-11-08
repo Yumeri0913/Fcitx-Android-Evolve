@@ -406,13 +406,18 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
             Timber.i("onFirstRun")
             runCatching {
                 val availableIme = availableInputMethods()?.map { it.uniqueName }?.toSet().orEmpty()
-                val preferredImeOrder = listOf("keyboard-us", "rime").filter { it in availableIme }
+                // Google Pinyin style: English keyboard as the inactive IM, pinyin as the active one
+                val preferredImeOrder = listOf("keyboard-us", "pinyin").filter { it in availableIme }
                 if (preferredImeOrder.isNotEmpty()) {
                     setEnabledInputMethods(preferredImeOrder.toTypedArray())
                 }
 
                 val globalConfig = getFcitxGlobalConfig() ?: RawConfig()
-                globalConfig.getOrCreate("Behavior").getOrCreate("ShareInputState").value = "All"
+                globalConfig.getOrCreate("Behavior").apply {
+                    getOrCreate("ShareInputState").value = "All"
+                    // start in Chinese mode like Google Pinyin does
+                    getOrCreate("ActiveByDefault").value = "True"
+                }
                 setFcitxGlobalConfig(globalConfig)
             }.onFailure {
                 Timber.w(it, "Failed to apply first-run defaults")

@@ -324,4 +324,5 @@
     <string name="clipboard_sync_start_pairing">Start LAN clipboard pairing</string>
     <string name="clipboard_sync_start_pairing_summary">Broadcast this device on the local network until a client connects</string>
     <string name="clipboard_sync_pairing_started">Pairing mode started</string>
+    <string name="toggle_chinese_english">Toggle Chinese/English</string>
 </resources>

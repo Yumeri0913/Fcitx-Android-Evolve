@@ -6,6 +6,65 @@ package org.fcitx.fcitx5.android.data.theme
 
 object ThemePreset {
 
+    /**
+     * Google Pinyin 4.x default skin ("Material Light", key borders off).
+     * Colors are taken from its `style_sheet_material_light` theme.
+     */
+    val GooglePinyinLight = Theme.Builtin(
+        name = "GooglePinyinLight",
+        isDark = false,
+        backgroundColor = 0xffeceff1,
+        barColor = 0xffe4e7e9,
+        keyboardColor = 0xffeceff1,
+        keyBackgroundColor = 0xfffbfbfc,
+        keyTextColor = 0xff37474f,
+        candidateTextColor = 0xff37474f,
+        candidateLabelColor = 0xff37474f,
+        candidateCommentColor = 0xb337474f,
+        altKeyBackgroundColor = 0xffdfe2e4,
+        altKeyTextColor = 0xb337474f,
+        accentKeyBackgroundColor = 0xff4db6ac,
+        accentKeyTextColor = 0xffffffff,
+        keyPressHighlightColor = 0x1937474f,
+        keyShadowColor = 0xffc0c3c4,
+        popupBackgroundColor = 0xffd9dbdd,
+        popupTextColor = 0xff37474f,
+        spaceBarColor = 0x3337474f,
+        dividerColor = 0x3337474f,
+        clipboardEntryColor = 0xfffbfbfc,
+        genericActiveBackgroundColor = 0xff80cbc4,
+        genericActiveForegroundColor = 0xff37474f
+    )
+
+    /**
+     * Google Pinyin 4.x "Material Dark", key borders off.
+     */
+    val GooglePinyinDark = Theme.Builtin(
+        name = "GooglePinyinDark",
+        isDark = true,
+        backgroundColor = 0xff263238,
+        barColor = 0xff21272b,
+        keyboardColor = 0xff263238,
+        keyBackgroundColor = 0xff404a50,
+        keyTextColor = 0xccffffff,
+        candidateTextColor = 0xccffffff,
+        candidateLabelColor = 0xccffffff,
+        candidateCommentColor = 0x99ffffff,
+        altKeyBackgroundColor = 0xff313c42,
+        altKeyTextColor = 0x99ffffff,
+        accentKeyBackgroundColor = 0xff80cbc4,
+        accentKeyTextColor = 0xffffffff,
+        keyPressHighlightColor = 0x1affffff,
+        keyShadowColor = 0xff1f292e,
+        popupBackgroundColor = 0xff3c474c,
+        popupTextColor = 0xffffffff,
+        spaceBarColor = 0x1affffff,
+        dividerColor = 0x1affffff,
+        clipboardEntryColor = 0xff404a50,
+        genericActiveBackgroundColor = 0xff4db6ac,
+        genericActiveForegroundColor = 0xffffffff
+    )
+
     val MaterialLight = Theme.Builtin(
         name = "MaterialLight",
         isDark = false,

@@ -324,4 +324,5 @@
     <string name="clipboard_sync_start_pairing">开始局域网剪贴板配对</string>
     <string name="clipboard_sync_start_pairing_summary">在局域网内广播本机，直到有客户端连接</string>
     <string name="clipboard_sync_pairing_started">已进入配对模式</string>
+    <string name="toggle_chinese_english">切换中/英</string>
 </resources>

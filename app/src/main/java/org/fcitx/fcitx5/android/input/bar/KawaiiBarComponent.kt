@@ -30,6 +30,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlag
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxEvent.CandidateListEvent
+import org.fcitx.fcitx5.android.core.InputMethodEntry
 import org.fcitx.fcitx5.android.data.clipboard.ClipboardManager
 import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -274,6 +275,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 redoButton.setOnClickListener {
                     service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl = true, shift = true)
                 }
+                langToggleButton.setOnClickListener {
+                    service.postFcitxJob { toggleIme() }
+                }
                 cursorMoveButton.setOnClickListener {
                     windowManager.attachWindow(TextEditingWindow())
                 }
@@ -426,6 +430,10 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             if (shouldShowVoiceInput) switchToVoiceInputCallback else hideKeyboardCallback
         )
         evalIdleUiState()
+    }
+
+    override fun onImeUpdate(ime: InputMethodEntry) {
+        idleUi.buttonsUi.langToggleButton.updateIme(ime)
     }
 
     override fun onPreeditEmptyStateUpdate(empty: Boolean) {

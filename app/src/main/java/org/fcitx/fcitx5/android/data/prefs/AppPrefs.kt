@@ -63,7 +63,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             enumList(
                 R.string.button_haptic_feedback,
                 "haptic_on_keypress",
-                InputFeedbackMode.FollowingSystem
+                InputFeedbackMode.Enabled
             )
         val hapticOnKeyUp = switch(
             R.string.button_up_haptic_feedback,
@@ -121,7 +121,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val soundOnKeyPress = enumList(
             R.string.button_sound,
             "sound_on_keypress",
-            InputFeedbackMode.FollowingSystem
+            InputFeedbackMode.Disabled
         )
         val soundOnKeyPressVolume = int(
             R.string.button_sound_volume,
@@ -173,12 +173,12 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val spaceKeyLongPressBehavior = enumList(
             R.string.space_long_press_behavior,
             "space_long_press_behavior",
-            SpaceLongPressBehavior.None
+            SpaceLongPressBehavior.ShowPicker
         )
         val spaceSwipeMoveCursor =
             switch(R.string.space_swipe_move_cursor, "space_swipe_move_cursor", true)
         val showLangSwitchKey =
-            switch(R.string.show_lang_switch_key, "show_lang_switch_key", true)
+            switch(R.string.show_lang_switch_key, "show_lang_switch_key", false)
         val langSwitchKeyBehavior = enumList(
             R.string.lang_switch_key_behavior,
             "lang_switch_key_behavior",
