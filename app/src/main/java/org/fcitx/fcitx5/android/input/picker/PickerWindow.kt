@@ -146,6 +146,13 @@ class PickerWindow(
     override fun onCreateBarExtension() = pickerLayout.tabsUi.root
 
     override fun onAttached() {
+        if (key == Key.Symbol) {
+            // like Google Pinyin, the symbol keyboard always opens on its first page of 常用
+            val range = pickerPagesAdapter.getRangeOfCategoryIndex(1)
+            if (pickerLayout.pager.currentItem != range.first) {
+                pickerLayout.pager.setCurrentItem(range.first, false)
+            }
+        }
         pickerLayout.embeddedKeyboard.also {
             pickerPagesAdapter.refreshIfNeeded()
             it.onReturnDrawableUpdate(returnKeyDrawable.resourceId)

@@ -586,6 +586,12 @@ abstract class BaseKeyboard(
         // do nothing by default
     }
 
+    init {
+        // Google Pinyin labels the key going back to letters "返回" (back)
+        findViewById<TextKeyView>(org.fcitx.fcitx5.android.R.id.button_back_to_text)?.mainText?.text =
+            context.getString(org.fcitx.fcitx5.android.R.string.back_to_text_keyboard)
+    }
+
     open fun onReturnDrawableUpdate(@DrawableRes returnDrawable: Int) {
         // do nothing by default
     }

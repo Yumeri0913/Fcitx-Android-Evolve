@@ -335,4 +335,5 @@
     <string name="keyboard_height_mode_percent">按屏幕高度百分比</string>
     <string name="spatial_correction">按落点智能纠错</string>
     <string name="spatial_correction_summary">根据每次按键的落点纠正拼音错键，与谷歌拼音相同</string>
+    <string name="back_to_text_keyboard">返回</string>
 </resources>

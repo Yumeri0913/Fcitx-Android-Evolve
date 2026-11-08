@@ -111,14 +111,16 @@ class LayoutSwitchKey(
     displayText: String,
     val to: String = "",
     percentWidth: Float = 0.15f,
-    variant: Variant = Variant.Alternative
+    variant: Variant = Variant.Alternative,
+    viewId: Int = -1
 ) : KeyDef(
     Appearance.Text(
         displayText,
         textSize = 16f,
         textStyle = Typeface.BOLD,
         percentWidth = percentWidth,
-        variant = variant
+        variant = variant,
+        viewId = viewId
     ),
     setOf(
         Behavior.Press(KeyAction.LayoutSwitchAction(to))

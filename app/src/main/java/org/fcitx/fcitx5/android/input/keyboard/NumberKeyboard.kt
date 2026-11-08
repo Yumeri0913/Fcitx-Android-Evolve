@@ -44,11 +44,12 @@ class NumberKeyboard(
                 BackspaceKey()
             ),
             listOf(
-                LayoutSwitchKey("ABC", TextKeyboard.Name),
+                // Google Pinyin digit keyboard bottom row: 150/100/100/300/100/100/150
+                LayoutSwitchKey("ABC", TextKeyboard.Name, viewId = R.id.button_back_to_text),
                 NumPadKey(",", 0xffac, 23f, 0.1f, KeyDef.Appearance.Variant.Alternative),
-                LayoutSwitchKey("!?#", PickerWindow.Key.Symbol.name, 0.13333f, KeyDef.Appearance.Variant.AltForeground),
-                NumPadKey("0", 0xffb0, 30f, 0.23334f),
-                NumPadKey("=", 0xffbd, 23f, 0.13333f, KeyDef.Appearance.Variant.AltForeground),
+                LayoutSwitchKey("!?#", PickerWindow.Key.Symbol.name, 0.1f, KeyDef.Appearance.Variant.AltForeground),
+                NumPadKey("0", 0xffb0, 30f, 0.3f),
+                NumPadKey("=", 0xffbd, 23f, 0.1f, KeyDef.Appearance.Variant.AltForeground),
                 NumPadKey(".", 0xffae, 23f, 0.1f, KeyDef.Appearance.Variant.Alternative),
                 ReturnKey()
             )
