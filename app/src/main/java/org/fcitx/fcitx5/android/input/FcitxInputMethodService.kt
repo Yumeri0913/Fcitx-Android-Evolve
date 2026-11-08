@@ -1047,6 +1047,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         return inputView?.handleInlineSuggestions(response) == true
     }
 
+    private var lastUserDataSave = 0L
+
+    /**
+     * Persist learned words and usage history when the keyboard is hidden, like Google Pinyin
+     * does, instead of only relying on fcitx's 30 minutes auto save: the IME process can be
+     * killed at any time. Throttled to avoid rewriting user data on every hide.
+     */
+    private fun saveUserDataIfNeeded() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastUserDataSave < USER_DATA_SAVE_INTERVAL) return
+        lastUserDataSave = now
+        postFcitxJob { save() }
+    }
+
     override fun onFinishInputView(finishingInput: Boolean) {
         Timber.d("onFinishInputView: finishingInput=$finishingInput")
         decorLocationUpdated = false
@@ -1059,6 +1073,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         postFcitxJob {
             focusOutIn()
         }
+        saveUserDataIfNeeded()
         hideStatusIcon()
         showingDialog?.dismiss()
     }
@@ -1119,5 +1134,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     companion object {
         const val DefaultHighlightColor = 0x008577  // material_deep_teal_500
         const val DeleteSurroundingFlag = "org.fcitx.fcitx5.android.DELETE_SURROUNDING"
+        private const val USER_DATA_SAVE_INTERVAL = 60_000L
     }
 }
