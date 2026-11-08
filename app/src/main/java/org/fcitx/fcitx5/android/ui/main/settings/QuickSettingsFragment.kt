@@ -63,6 +63,7 @@ class QuickSettingsFragment : PaddingPreferenceFragment() {
         checked: () -> Boolean,
         onChange: (Boolean) -> Unit
     ) = MySwitchPreference(context).also {
+        it.key = "quick_settings:$title"
         it.isPersistent = false
         it.isIconSpaceReserved = false
         it.isSingleLineTitle = false
@@ -82,6 +83,8 @@ class QuickSettingsFragment : PaddingPreferenceFragment() {
         current: () -> String,
         onChange: (String) -> Unit
     ) = ListPreference(context).also {
+        // list dialogs find their preference by key
+        it.key = "quick_settings:$title"
         it.isPersistent = false
         it.isIconSpaceReserved = false
         it.isSingleLineTitle = false
