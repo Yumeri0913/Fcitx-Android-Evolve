@@ -87,6 +87,21 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     ) =
         withFcitxContext { sendKeyToFcitxString(key, states.toInt(), code, up, timestamp) }
 
+    override suspend fun sendKeyWithAlternatives(
+        key: String,
+        states: UInt,
+        code: Int,
+        alternatives: KeyAlternatives
+    ) = withFcitxContext {
+        // all on fcitx thread: alternatives are attached to this key only, then dropped
+        setPendingKeyAlternatives(alternatives.keys, alternatives.scores)
+        try {
+            sendKeyToFcitxString(key, states.toInt(), code, false, -1)
+        } finally {
+            setPendingKeyAlternatives("", FloatArray(0))
+        }
+    }
+
     override suspend fun sendKey(c: Char, states: UInt, code: Int, up: Boolean, timestamp: Int) =
         withFcitxContext { sendKeyToFcitxChar(c, states.toInt(), code, up, timestamp) }
 
@@ -265,6 +280,9 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
             up: Boolean,
             timestamp: Int
         )
+
+        @JvmStatic
+        external fun setPendingKeyAlternatives(keys: String, scores: FloatArray)
 
         @JvmStatic
         external fun sendKeyToFcitxChar(c: Char, state: Int, code: Int, up: Boolean, timestamp: Int)

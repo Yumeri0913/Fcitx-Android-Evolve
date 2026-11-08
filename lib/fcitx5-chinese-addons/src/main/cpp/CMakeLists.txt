@@ -55,6 +55,8 @@ option(USE_WEBKIT "" OFF)
 option(ENABLE_CLOUDPINYIN "" OFF)
 # prefer OpenCC_DIR rather than fcitx5-chinese-addons/cmake/FindOpenCC.cmake
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../patches/ApplyPatches.cmake")
+fcitx5_android_apply_patches("${CMAKE_CURRENT_SOURCE_DIR}/fcitx5-chinese-addons" fcitx5-chinese-addons)
 add_subdirectory(fcitx5-chinese-addons)
 # rename to include executable in apk
 set_target_properties(scel2org5 PROPERTIES OUTPUT_NAME libscel2org5.so)

@@ -91,7 +91,12 @@ class CommonKeyActionListener :
         KeyActionListener { action, _ ->
             when (action) {
                 is FcitxKeyAction -> service.postFcitxJob {
-                    sendKey(action.act, action.states.states, action.code)
+                    val alternatives = action.alternatives
+                    if (alternatives != null) {
+                        sendKeyWithAlternatives(action.act, action.states.states, action.code, alternatives)
+                    } else {
+                        sendKey(action.act, action.states.states, action.code)
+                    }
                 }
                 is SymAction -> service.postFcitxJob {
                     sendKey(action.sym, action.states)

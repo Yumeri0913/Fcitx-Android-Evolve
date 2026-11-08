@@ -85,6 +85,16 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
         }
 
     /**
+     * Whether a finger sliding off this key may move the press to another such key
+     */
+    var slideSwitchable = false
+
+    /**
+     * Whether this key is committed as soon as another finger touches the keyboard
+     */
+    var commitOnNextPointer = false
+
+    /**
      * KeyView content left margin, in percentage of parent width
      */
     @FloatRange(0.0, 1.0)

@@ -33,6 +33,7 @@
 #include <unicode_public.h>
 #include <clipboard_public.h>
 
+#include <libime/pinyin/pinyincontext.h>
 #include <libime/pinyin/pinyindictionary.h>
 #include <libime/table/tablebaseddictionary.h>
 
@@ -772,6 +773,23 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_sendKeyToFcitxString(JNIEnv *env, jclas
                          fcitx::KeyStates(static_cast<uint32_t>(state)),
                          code + /* evdev offset */ 8};
     Fcitx::Instance().sendKey(parsedKey, up, timestamp);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_setPendingKeyAlternatives(JNIEnv *env, jclass clazz, jstring keys, jfloatArray scores) {
+    std::string k = CString(env, keys);
+    const auto n = std::min(static_cast<size_t>(env->GetArrayLength(scores)), k.size());
+    libime::PinyinContext::KeyAlternatives alternatives;
+    alternatives.reserve(n);
+    if (n > 0) {
+        std::vector<jfloat> values(n);
+        env->GetFloatArrayRegion(scores, 0, static_cast<jsize>(n), values.data());
+        for (size_t i = 0; i < n; i++) {
+            alternatives.emplace_back(k[i], values[i]);
+        }
+    }
+    libime::PinyinContext::setPendingKeyAlternatives(std::move(alternatives));
 }
 
 extern "C"

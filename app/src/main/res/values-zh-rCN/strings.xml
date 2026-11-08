@@ -333,4 +333,6 @@
     <string name="keyboard_height_mode">键盘高度模式</string>
     <string name="keyboard_height_mode_google_pinyin">与谷歌拼音相同</string>
     <string name="keyboard_height_mode_percent">按屏幕高度百分比</string>
+    <string name="spatial_correction">按落点智能纠错</string>
+    <string name="spatial_correction_summary">根据每次按键的落点纠正拼音错键，与谷歌拼音相同</string>
 </resources>

@@ -4,6 +4,7 @@
  */
 package org.fcitx.fcitx5.android.input.keyboard
 
+import org.fcitx.fcitx5.android.core.KeyAlternatives
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.core.ScancodeMapping
@@ -14,7 +15,9 @@ sealed class KeyAction {
     data class FcitxKeyAction(
         val act: String,
         val code: Int = ScancodeMapping.charToScancode(act[0]),
-        val states: KeyStates = KeyStates.Virtual
+        val states: KeyStates = KeyStates.Virtual,
+        /** keys the touch may have meant, from [SpatialModel] */
+        val alternatives: KeyAlternatives? = null
     ) : KeyAction()
 
     data class SymAction(val sym: KeySym, val states: KeyStates = KeyStates.Virtual) : KeyAction()

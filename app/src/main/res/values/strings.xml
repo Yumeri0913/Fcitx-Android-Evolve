@@ -333,4 +333,6 @@
     <string name="keyboard_height_mode">Keyboard height mode</string>
     <string name="keyboard_height_mode_google_pinyin">Same as Google Pinyin</string>
     <string name="keyboard_height_mode_percent">Percentage of screen height</string>
+    <string name="spatial_correction">Touch position correction</string>
+    <string name="spatial_correction_summary">Correct pinyin typos using where each key was touched, like Google Pinyin</string>
 </resources>

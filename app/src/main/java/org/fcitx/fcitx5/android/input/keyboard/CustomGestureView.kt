@@ -91,6 +91,54 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
 
     private val touchSlop: Float = ViewConfiguration.get(ctx).scaledTouchSlop.toFloat()
 
+    /**
+     * How far (px) a touch may leave the view and still count as a tap on release.
+     */
+    var outsideTolerance: Float = touchSlop
+
+    /**
+     * Swipe distance is not consumed until this long (ms) after touch down, so a quick tap that
+     * drifts a little is still a tap. Movement in the meantime is consumed once the delay passes.
+     */
+    var swipeStartDelay = 0L
+    private var downTime = 0L
+
+    /**
+     * Delay (ms) before key repeat starts, independent from long press delay.
+     */
+    var repeatStartDelay = RepeatStartDelay
+
+    private var nextPressSlidIn = false
+
+    /**
+     * Whether the current press started by sliding onto this view from another key, rather than
+     * touching down on it. Such presses use a longer long press delay.
+     */
+    var pressSlidIn = false
+        private set
+
+    /**
+     * Position (in view coordinates) of the last touch release.
+     */
+    var lastUpX = 0f
+        private set
+    var lastUpY = 0f
+        private set
+
+    /**
+     * Whether the finger can leave this key for another one without breaking a gesture
+     * (long press popup, key repeat, swipe repeat or a consumed gesture).
+     */
+    val canSlideAway: Boolean
+        get() = !longPressTriggered && !repeatStarted && !swipeRepeatTriggered && !gestureConsumed
+
+    /**
+     * Mark the next ACTION_DOWN as a finger sliding onto this view from another key.
+     */
+    fun markNextPressSlidIn() {
+        nextPressSlidIn = true
+    }
+
     init {
         // disable system sound effect and haptic feedback
         isSoundEffectsEnabled = false
@@ -105,10 +153,10 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
     }
 
     private fun pointInView(x: Float, y: Float): Boolean {
-        return -touchSlop <= x &&
-                -touchSlop <= y &&
-                x < (width + touchSlop) &&
-                y < (height + touchSlop)
+        return -outsideTolerance <= x &&
+                -outsideTolerance <= y &&
+                x < (width + outsideTolerance) &&
+                y < (height + outsideTolerance)
     }
 
     private fun resetState() {
@@ -152,7 +200,10 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
         val y = event.y
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                pressSlidIn = nextPressSlidIn
+                nextPressSlidIn = false
                 if (!isEnabled) return false
+                downTime = SystemClock.uptimeMillis()
                 drawableHotspotChanged(x, y)
                 isPressed = true
                 InputFeedbacks.hapticFeedback(this)
@@ -161,7 +212,8 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                 if (longPressEnabled) {
                     longPressJob?.cancel()
                     longPressJob = lifecycleScope.launch {
-                        delay(longPressDelay.toLong())
+                        val factor = if (pressSlidIn) SlidInLongPressFactor else 1f
+                        delay((longPressDelay * factor).toLong())
                         if (longPressFeedbackEnabled) {
                             InputFeedbacks.hapticFeedback(this@CustomGestureView, true)
                         }
@@ -171,7 +223,7 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                 if (repeatEnabled) {
                     repeatJob?.cancel()
                     repeatJob = lifecycleScope.launch {
-                        delay(longPressDelay.toLong())
+                        delay(repeatStartDelay)
                         repeatStarted = true
                         var lastTriggerTime: Long
                         while (isActive && isEnabled) {
@@ -188,6 +240,8 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                 }
             }
             MotionEvent.ACTION_UP -> {
+                lastUpX = x
+                lastUpY = y
                 isPressed = false
                 InputFeedbacks.hapticFeedback(this, longPress = true, keyUp = true)
                 dispatchGestureEvent(GestureType.Up, event.x, event.y)
@@ -232,6 +286,10 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                     }
                 }
                 if (!swipeEnabled || longPressTriggered || repeatStarted) return true
+                if (swipeStartDelay > 0 && SystemClock.uptimeMillis() - downTime < swipeStartDelay) {
+                    // keep accumulating from the last consumed position
+                    return true
+                }
                 val countX = consumeSwipe(x, SwipeAxis.X)
                 val countY = consumeSwipe(y, SwipeAxis.Y)
                 dispatchGestureEvent(GestureType.Move, x, y, countX, countY)
@@ -311,5 +369,15 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
     companion object {
         val longPressDelay by AppPrefs.getInstance().keyboard.longPressDelay
         const val RepeatInterval = 50L
+
+        /**
+         * Same as Google Pinyin: key repeat starts 400ms after touch down
+         */
+        const val RepeatStartDelay = 400L
+
+        /**
+         * Same as Google Pinyin: long press takes 1.6x longer on a key the finger slid onto
+         */
+        const val SlidInLongPressFactor = 1.6f
     }
 }

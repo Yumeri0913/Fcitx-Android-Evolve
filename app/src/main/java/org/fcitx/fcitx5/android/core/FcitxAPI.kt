@@ -46,6 +46,12 @@ interface FcitxAPI {
 
     suspend fun sendKey(key: String, states: UInt = 0u, code: Int = 0, up: Boolean = false, timestamp: Int = -1)
 
+    /**
+     * Send a key press from a touch keyboard, with the keys the touch may have meant,
+     * so that pinyin keyboard correction can take the touch position into account.
+     */
+    suspend fun sendKeyWithAlternatives(key: String, states: UInt, code: Int, alternatives: KeyAlternatives)
+
     suspend fun sendKey(c: Char, states: UInt = 0u, code: Int = 0, up: Boolean = false, timestamp: Int = -1)
 
     suspend fun sendKey(sym: Int, states: UInt = 0u, code: Int = 0, up: Boolean = false, timestamp: Int = -1)

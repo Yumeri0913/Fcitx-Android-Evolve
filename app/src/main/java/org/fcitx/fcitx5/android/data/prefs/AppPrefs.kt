@@ -156,7 +156,11 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         ) { showVoiceInputButton.getValue() }
 
         val expandKeypressArea =
-            switch(R.string.expand_keypress_area, "expand_keypress_area", false)
+            switch(R.string.expand_keypress_area, "expand_keypress_area", true)
+        val spatialCorrection = switch(
+            R.string.spatial_correction, "spatial_correction", true,
+            summary = R.string.spatial_correction_summary
+        )
         val swipeSymbolDirection = enumList(
             R.string.swipe_symbol_behavior,
             "swipe_symbol_behavior",

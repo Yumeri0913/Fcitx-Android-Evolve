@@ -31,6 +31,8 @@ add_library(PkgConfig::ZSTD ALIAS zstd::libzstd_static)
 
 set(LIBIME_INSTALL_PKGDATADIR table)
 option(ENABLE_TEST "" OFF)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../patches/ApplyPatches.cmake")
+fcitx5_android_apply_patches("${CMAKE_CURRENT_SOURCE_DIR}/libime" libime)
 add_subdirectory(libime)
 # kenlm/util/exception.hh uses __FILE__ macro
 target_compile_options(kenlm PRIVATE "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/libime/src/libime/core/kenlm=.")

@@ -1,0 +1,606 @@
+diff --git a/src/libime/core/historybigram.cpp b/src/libime/core/historybigram.cpp
+index 54e2c91..e8e5ced 100644
+--- a/src/libime/core/historybigram.cpp
++++ b/src/libime/core/historybigram.cpp
+@@ -479,6 +479,35 @@ public:
+         return true;
+     }
+ 
++    // Revert add() of the latest sentence (appended == 0), or
++    // maybeAppendToLatestSentence() that appended [appended] words.
++    bool undoLatest(size_t appended) {
++        if (recent_.empty()) {
++            return false;
++        }
++        const int delta = 1;
++        auto &latest = recent_.front();
++        if (appended == 0) {
++            remove(latest);
++            unigram_.decFreq({"<s>", ""}, delta);
++            unigram_.decFreq({"</s>", ""}, delta);
++            recent_.pop_front();
++            return true;
++        }
++        if (appended >= latest.size()) {
++            return false;
++        }
++        decBigram(latest.back(), {"</s>", ""}, delta);
++        for (size_t i = 0; i < appended; i++) {
++            auto item = std::move(latest.back());
++            latest.pop_back();
++            unigram_.decFreq(item, delta);
++            decBigram(latest.back(), item, delta);
++        }
++        incBigram(latest.back(), {"</s>", ""}, delta);
++        return true;
++    }
++
+ private:
+     template <typename R>
+     void remove(const R &sentence) {
+@@ -826,13 +855,21 @@ float HistoryBigram::scoreWithCode(
+         {cur ? cur->word() : "", extractor && cur ? extractor(cur) : ""});
+ }
+ 
+-void HistoryBigram::addWithContext(const std::vector<WordWithCode> &context,
+-                                   std::vector<WordWithCode> newSentence) {
++size_t HistoryBigram::addWithContext(const std::vector<WordWithCode> &context,
++                                     std::vector<WordWithCode> newSentence) {
+     FCITX_D();
++    const size_t size = newSentence.size();
+     if (context.empty() ||
+         !d->pools_[0].maybeAppendToLatestSentence(context, newSentence)) {
+         addWithCode(newSentence);
++        return 0;
+     }
++    return size;
++}
++
++void HistoryBigram::undoAddWithContext(size_t appended) {
++    FCITX_D();
++    d->pools_[0].undoLatest(appended);
+ }
+ 
+ } // namespace libime
+diff --git a/src/libime/core/historybigram.h b/src/libime/core/historybigram.h
+index 1ab01cd..481ad10 100644
+--- a/src/libime/core/historybigram.h
++++ b/src/libime/core/historybigram.h
+@@ -102,9 +102,19 @@ public:
+     int32_t rawBigramFrequency(WordWithCodeView prev,
+                                WordWithCodeView cur) const;
+ 
+-    void addWithContext(const std::vector<WordWithCode> &context,
++    /**
++     * @return number of words appended to the latest sentence, or 0 if
++     * newSentence was added as a new sentence. Pass it to undoAddWithContext.
++     */
++    size_t addWithContext(const std::vector<WordWithCode> &context,
+                         std::vector<WordWithCode> newSentence);
+ 
++    /**
++     * Undo the most recent addWithContext, given its return value.
++     * Sentences already moved to older pools are not restored.
++     */
++    void undoAddWithContext(size_t appended);
++
+ private:
+     std::unique_ptr<HistoryBigramPrivate> d_ptr;
+     FCITX_DECLARE_PRIVATE(HistoryBigram);
+diff --git a/src/libime/pinyin/pinyincontext.cpp b/src/libime/pinyin/pinyincontext.cpp
+index ff6c69e..1ebadca 100644
+--- a/src/libime/pinyin/pinyincontext.cpp
++++ b/src/libime/pinyin/pinyincontext.cpp
+@@ -146,6 +146,13 @@ bool hasCorrection(const SentenceResult &candidate) {
+ 
+ } // namespace
+ 
++namespace {
++PinyinContext::KeyAlternatives &pendingKeyAlternatives() {
++    static PinyinContext::KeyAlternatives pending;
++    return pending;
++}
++} // namespace
++
+ class PinyinContextPrivate : public fcitx::QPtrHolder<PinyinContext> {
+ public:
+     PinyinContextPrivate(PinyinContext *q, PinyinIME *ime)
+@@ -167,6 +174,25 @@ public:
+     std::vector<fcitx::ScopedConnection> conn_;
+     std::list<PinyinWordNode> contextWords_;
+ 
++    // One entry per user input character.
++    std::vector<std::shared_ptr<const PinyinContext::KeyAlternatives>>
++        keyAlternatives_;
++
++    struct LearnRecord {
++        bool valid = false;
++        // word added to user dict, empty if none
++        std::string word;
++        std::string fullPinyin;
++        bool addedHistory = false;
++        size_t historyAppended = 0;
++    } lastLearn_;
++
++    void syncKeyAlternativesSize(size_t size) {
++        if (keyAlternatives_.size() != size) {
++            keyAlternatives_.resize(size);
++        }
++    }
++
+     size_t alignCursorToNextSegment() const {
+         FCITX_Q();
+         auto currentCursor = q->cursor();
+@@ -477,18 +503,69 @@ bool PinyinContext::typeImpl(const char *s, size_t length) {
+         }
+     }
+     auto changed = cancelTill(cursor());
+-    changed = InputBuffer::typeImpl(s, length) || changed;
++    d->syncKeyAlternativesSize(size());
++    const auto oldSize = size();
++    const auto oldCursor = cursor();
++    std::shared_ptr<const KeyAlternatives> alternatives;
++    if (auto &pending = pendingKeyAlternatives(); !pending.empty()) {
++        if (length == 1 && pending.front().first == s[0]) {
++            alternatives =
++                std::make_shared<const KeyAlternatives>(std::move(pending));
++        }
++        pending.clear();
++    }
++    const bool typed = InputBuffer::typeImpl(s, length);
++    if (typed && size() > oldSize) {
++        const auto inserted = size() - oldSize;
++        d->keyAlternatives_.insert(
++            d->keyAlternatives_.begin() + std::min(oldCursor, oldSize),
++            inserted, inserted == 1 ? alternatives : nullptr);
++    }
++    changed = typed || changed;
+     if (changed) {
+         update();
+     }
+     return changed;
+ }
+ 
++void PinyinContext::setPendingKeyAlternatives(KeyAlternatives alternatives) {
++    pendingKeyAlternatives() = std::move(alternatives);
++}
++
++const PinyinContext::KeyAlternatives *
++PinyinContext::keyAlternatives(size_t index) const {
++    FCITX_D();
++    if (index >= d->keyAlternatives_.size()) {
++        return nullptr;
++    }
++    return d->keyAlternatives_[index].get();
++}
++
++bool PinyinContext::hasKeyAlternatives(size_t from, size_t to) const {
++    FCITX_D();
++    to = std::min(to, d->keyAlternatives_.size());
++    for (size_t i = from; i < to; i++) {
++        if (d->keyAlternatives_[i]) {
++            return true;
++        }
++    }
++    return false;
++}
++
+ void PinyinContext::erase(size_t from, size_t to) {
+     if (from == to) {
+         return;
+     }
+ 
++    {
++        FCITX_D();
++        d->syncKeyAlternativesSize(size());
++        const auto end = std::min(to, d->keyAlternatives_.size());
++        if (from < end) {
++            d->keyAlternatives_.erase(d->keyAlternatives_.begin() + from,
++                                      d->keyAlternatives_.begin() + end);
++        }
++    }
+     // check if erase everything
+     if (from == 0 && to >= size()) {
+         FCITX_D();
+@@ -1091,10 +1168,15 @@ void PinyinContext::learn() {
+     if (!selected()) {
+         return;
+     }
++    d->lastLearn_ = {};
+ 
+     std::vector<HistoryBigram::WordWithCode> newSentence;
+     if (auto [result, encodedWordPinyin] = d->learnWord();
+         result != LearnWordResult::Ignored) {
++        d->lastLearn_.valid = true;
++        d->lastLearn_.word = sentence();
++        d->lastLearn_.fullPinyin =
++            PinyinEncoder::decodeFullPinyin(encodedWordPinyin);
+         // Do not insert custom to history for the first time.
+         if (result == LearnWordResult::Normal) {
+             // Create new sentence with the whole new learned word.
+@@ -1113,9 +1195,32 @@ void PinyinContext::learn() {
+         return;
+     }
+ 
+-    auto context = contextWordsWithPinyin();
+-    d->ime_->model()->history().addWithContext(contextWordsWithPinyin(),
+-                                               std::move(newSentence));
++    d->lastLearn_.valid = true;
++    d->lastLearn_.addedHistory = true;
++    d->lastLearn_.historyAppended =
++        d->ime_->model()->history().addWithContext(contextWordsWithPinyin(),
++                                                   std::move(newSentence));
++}
++
++bool PinyinContext::canUndoLearn() const {
++    FCITX_D();
++    return d->lastLearn_.valid;
++}
++
++void PinyinContext::undoLearn() {
++    FCITX_D();
++    if (!d->lastLearn_.valid) {
++        return;
++    }
++    auto record = std::move(d->lastLearn_);
++    d->lastLearn_ = {};
++    if (record.addedHistory) {
++        d->ime_->model()->history().undoAddWithContext(record.historyAppended);
++    }
++    if (!record.word.empty()) {
++        d->ime_->dict()->removeWord(PinyinDictionary::UserDict,
++                                    record.fullPinyin, record.word);
++    }
+ }
+ 
+ void PinyinContext::setContextWords(
+diff --git a/src/libime/pinyin/pinyincontext.h b/src/libime/pinyin/pinyincontext.h
+index d16c94e..c744e42 100644
+--- a/src/libime/pinyin/pinyincontext.h
++++ b/src/libime/pinyin/pinyincontext.h
+@@ -28,6 +28,13 @@ enum class PinyinPreeditMode;
+ 
+ class LIBIMEPINYIN_EXPORT PinyinContext : public InputBuffer {
+ public:
++    /**
++     * Keys a touch keyboard thinks the user may have meant for one key press,
++     * as (key, natural log likelihood). The first entry is the key that was
++     * actually typed. Used to price keyboard correction by touch position.
++     */
++    using KeyAlternatives = std::vector<std::pair<char, float>>;
++
+     PinyinContext(PinyinIME *ime);
+     virtual ~PinyinContext();
+ 
+@@ -124,6 +131,32 @@ public:
+     /// Add the selected part to history if selected() == true.
+     void learn();
+ 
++    /**
++     * Whether the effect of the last learn() can still be undone.
++     * Any later learn() replaces the undo record.
++     */
++    bool canUndoLearn() const;
++
++    /**
++     * Undo the last learn(): remove the word it added to user dictionary, and
++     * its history entry. E.g. the user deleted the text right after commit.
++     */
++    void undoLearn();
++
++    /**
++     * Set the alternatives of the key that will be typed next. They are
++     * attached to the next single character type() if it matches the first
++     * entry, and are dropped otherwise. Not thread safe, meant to be called
++     * right before delivering the key event on the same thread.
++     */
++    static void setPendingKeyAlternatives(KeyAlternatives alternatives);
++
++    /// Alternatives attached to the user input character at [index], if any.
++    const KeyAlternatives *keyAlternatives(size_t index) const;
++
++    /// Whether any user input character in [from, to) has alternatives.
++    bool hasKeyAlternatives(size_t from, size_t to) const;
++
+     /// Return the position of last pinyin. E.g. 你h|ao, return the offset
+     /// before h.
+     int pinyinBeforeCursor() const;
+diff --git a/src/libime/pinyin/pinyincorrectionprofile.cpp b/src/libime/pinyin/pinyincorrectionprofile.cpp
+index 27e9e05..0fea775 100644
+--- a/src/libime/pinyin/pinyincorrectionprofile.cpp
++++ b/src/libime/pinyin/pinyincorrectionprofile.cpp
+@@ -4,6 +4,7 @@
+  * SPDX-License-Identifier: LGPL-2.1-or-later
+  */
+ #include "pinyincorrectionprofile.h"
++#include <cmath>
+ #include <cstddef>
+ #include <memory>
+ #include <string>
+@@ -40,11 +41,51 @@ mappingFromRows(const std::vector<std::string> &rows) {
+     return result;
+ }
+ 
++/**
++ * Keys adjacent on a staggered keyboard: same row left/right, plus keys in the
++ * row above/below whose centers are at most one key width away horizontally.
++ * Each row is given with the x offset of its first key center, in key widths.
++ *
++ * Vertical neighbors only take effect when touch data is available (see
++ * PinyinDictionary matching), otherwise only same-row neighbors are accepted.
++ */
++std::unordered_map<char, std::vector<char>> mappingFromStaggeredRows(
++    const std::vector<std::pair<std::string, float>> &rows) {
++    std::unordered_map<char, std::vector<char>> result =
++        mappingFromRows([&rows]() {
++            std::vector<std::string> plain;
++            for (const auto &row : rows) {
++                plain.push_back(row.first);
++            }
++            return plain;
++        }());
++    for (size_t r = 0; r < rows.size(); r++) {
++        for (size_t i = 0; i < rows[r].first.size(); i++) {
++            const char key = rows[r].first[i];
++            const float x = rows[r].second + static_cast<float>(i);
++            for (size_t other : {r - 1, r + 1}) {
++                if (other >= rows.size()) {
++                    continue;
++                }
++                for (size_t j = 0; j < rows[other].first.size(); j++) {
++                    const float ox =
++                        rows[other].second + static_cast<float>(j);
++                    if (std::abs(ox - x) <= 1.0F) {
++                        result[key].push_back(rows[other].first[j]);
++                    }
++                }
++            }
++        }
++    }
++    return result;
++}
++
+ std::unordered_map<char, std::vector<char>>
+ getProfileMapping(BuiltinPinyinCorrectionProfile profile) {
+     switch (profile) {
+     case BuiltinPinyinCorrectionProfile::Qwerty:
+-        return mappingFromRows({"qwertyuiop", "asdfghjkl", "zxcvbnm"});
++        return mappingFromStaggeredRows(
++            {{"qwertyuiop", 0.0F}, {"asdfghjkl", 0.5F}, {"zxcvbnm", 1.5F}});
+     }
+ 
+     return {};
+diff --git a/src/libime/pinyin/pinyindictionary.cpp b/src/libime/pinyin/pinyindictionary.cpp
+index 047ee3c..19116c7 100644
+--- a/src/libime/pinyin/pinyindictionary.cpp
++++ b/src/libime/pinyin/pinyindictionary.cpp
+@@ -11,6 +11,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <fstream>
++#include <functional>
+ #include <iomanip>
+ #include <ios>
+ #include <istream>
+@@ -41,6 +42,7 @@
+ #include "libime/core/utils.h"
+ #include "libime/core/utils_p.h"
+ #include "libime/core/zstdfilter.h"
++#include "libime/pinyin/pinyincontext.h"
+ #include "libime/pinyin/pinyinmatchstate.h"
+ #include "constants.h"
+ #include "pinyindecoder_p.h"
+@@ -51,6 +53,11 @@ namespace libime {
+ 
+ namespace {
+ const float fuzzyCost = std::log10(0.5F);
++// Fuzzies of a trie position: low bits are fuzzy cost units (each is
++// fuzzyCost), every pinyin correction on the path adds one correctionMark.
++constexpr size_t correctionMark = 1 << 16;
++// Corrections less likely than this (log10) are not considered at all.
++constexpr float maxSpatialCorrectionPenalty = 4.0F;
+ const size_t minimumLongWordLength = 3;
+ const float invalidPinyinCost = -100.0F;
+ const char pinyinHanziSep = '!';
+@@ -212,6 +219,17 @@ inline void searchOneStep(
+     nodes.splice(nodes.end(), std::move(extraNodes));
+ }
+ 
++bool isQwertyRowNeighbor(char a, char b) {
++    for (std::string_view row : {"qwertyuiop", "asdfghjkl", "zxcvbnm"}) {
++        auto i = row.find(a);
++        auto j = row.find(b);
++        if (i != std::string_view::npos && j != std::string_view::npos) {
++            return i + 1 == j || j + 1 == i;
++        }
++    }
++    return false;
++}
++
+ size_t fuzzyFactor(PinyinFuzzyFlags flags) {
+     size_t factor = 0;
+     if (flags.test(PinyinFuzzyFlag::Correction)) {
+@@ -314,7 +332,8 @@ public:
+           flags_(matchState->fuzzyFlags()),
+           spProfile_(matchState->shuangpinProfile()),
+           correctionProfile_(matchState->correctionProfile()),
+-          partialLongWordLimit_(matchState->partialLongWordLimit()) {}
++          partialLongWordLimit_(matchState->partialLongWordLimit()),
++          pinyinContext_(matchState->d_func()->context_) {}
+ 
+     explicit PinyinMatchContext(
+         const SegmentGraph &graph, const GraphMatchCallback &callback,
+@@ -337,6 +356,14 @@ public:
+     std::shared_ptr<const ShuangpinProfile> spProfile_;
+     std::shared_ptr<const PinyinCorrectionProfile> correctionProfile_;
+     size_t partialLongWordLimit_ = 0;
++    const PinyinContext *pinyinContext_ = nullptr;
++
++    // Whether results for user input [from, to) depend on touch positions,
++    // which means they must not be shared through caches keyed by pinyin.
++    bool dependsOnTouch(size_t from, size_t to) const {
++        return correctionProfile_ && pinyinContext_ &&
++               pinyinContext_->hasKeyAlternatives(from, to);
++    }
+ };
+ 
+ class PinyinDictionaryPrivate : fcitx::QPtrHolder<PinyinDictionary> {
+@@ -395,9 +422,75 @@ void PinyinDictionaryPrivate::addEmptyMatch(
+     }
+ }
+ 
++/**
++ * Fuzzy units for matching user input [typed] at [offset] as syllable
++ * initial + final. Returns nullopt if this match should be skipped.
++ *
++ * A keyboard correction replaces exactly one letter. With touch data for that
++ * letter, its cost is how much less likely the intended key was at the touch
++ * point than the key actually hit; keys the touch model did not consider are
++ * rejected. Without touch data, only same-row neighbors are accepted, at the
++ * original fixed cost.
++ */
++std::optional<size_t> matchFuzzyFactor(const PinyinContext *context,
++                                       std::string_view typed, size_t offset,
++                                       PinyinInitial initial, PinyinFinal final,
++                                       PinyinFuzzyFlags flags) {
++    if (!flags.test(PinyinFuzzyFlag::Correction)) {
++        return fuzzyFactor(flags);
++    }
++    const size_t base = fuzzyFactor(flags.unset(PinyinFuzzyFlag::Correction));
++    const std::string intended = PinyinEncoder::initialToString(initial) +
++                                 PinyinEncoder::finalToString(final);
++    if (intended.size() == typed.size()) {
++        size_t diffCount = 0;
++        size_t diff = 0;
++        for (size_t i = 0; i < typed.size(); i++) {
++            if (intended[i] != typed[i]) {
++                diffCount++;
++                diff = i;
++            }
++        }
++        if (diffCount == 1) {
++            const char want = intended[diff];
++            const char got = typed[diff];
++            const auto *alternatives =
++                context ? context->keyAlternatives(offset + diff) : nullptr;
++            if (alternatives && !alternatives->empty() &&
++                alternatives->front().first == got) {
++                const float typedScore = alternatives->front().second;
++                auto iter = std::find_if(
++                    alternatives->begin(), alternatives->end(),
++                    [want](const auto &item) { return item.first == want; });
++                if (iter == alternatives->end()) {
++                    return std::nullopt;
++                }
++                const float penalty =
++                    std::max(0.0F, (typedScore - iter->second) /
++                                       2.302585093F);
++                if (penalty > maxSpatialCorrectionPenalty) {
++                    return std::nullopt;
++                }
++                // At least one unit, so the exact key wins a tie.
++                const auto units = 1 + static_cast<size_t>(std::ceil(
++                                           penalty / -fuzzyCost));
++                return correctionMark + base + units;
++            }
++            if (!isQwertyRowNeighbor(got, want)) {
++                return std::nullopt;
++            }
++        }
++    }
++    return correctionMark + base + PINYIN_CORRECTION_FUZZY_FACTOR;
++}
++
++using MatchFuzzyFactorFn = std::function<std::optional<size_t>(
++    PinyinInitial, PinyinFinal, PinyinFuzzyFlags)>;
++
+ PinyinTriePositions traverseAlongPathOneStepBySyllables(
+     const MatchedPinyinPath &path,
+-    const MatchedPinyinSyllablesWithFuzzyFlags &syls) {
++    const MatchedPinyinSyllablesWithFuzzyFlags &syls,
++    const MatchFuzzyFactorFn &factorFn) {
+     PinyinTriePositions positions;
+     for (const auto &pr : path.triePositions()) {
+         uint64_t _pos;
+@@ -426,7 +519,11 @@ PinyinTriePositions traverseAlongPathOneStepBySyllables(
+             };
+             if (finals.size() > 1 || finals[0].first != PinyinFinal::Invalid) {
+                 for (auto final : finals) {
+-                    updateNext(final.first, fuzzyFactor(final.second), pos);
++                    auto factor = factorFn(syl.first, final.first, final.second);
++                    if (!factor) {
++                        continue;
++                    }
++                    updateNext(final.first, *factor, pos);
+                 }
+             } else if (!path.flags_.test(PinyinDictFlag::FullMatch)) {
+                 for (char test = PinyinEncoder::firstFinal;
+@@ -446,11 +543,9 @@ void matchWordsOnTrie(const PinyinTrie *userDict, const MatchedPinyinPath &path,
+         uint64_t pos;
+         size_t fuzzies;
+         std::tie(pos, fuzzies) = pr;
+-        const float extraCost = fuzzies * fuzzyCost;
+-        // This is an inaccuration estimation, since fuzzies may contain real
+-        // fuzzy pinyin. But since this value is 10, it is a good estimate.
+-        // After all 10 fuzzies in a word is kinda impossible.
+-        const bool isCorrection = fuzzies >= PINYIN_CORRECTION_FUZZY_FACTOR;
++        const float extraCost =
++            static_cast<float>(fuzzies % correctionMark) * fuzzyCost;
++        const bool isCorrection = fuzzies >= correctionMark;
+         if (matchLongWord) {
+             path.trie()->foreach(
+                 [userDict, &path, &callback, extraCost, isCorrection](
+@@ -540,7 +635,9 @@ bool PinyinDictionaryPrivate::matchWordsForOnePath(
+         }
+     };
+ 
+-    if (context.matchCacheMap_) {
++    if (context.matchCacheMap_ &&
++        !context.dependsOnTouch(path.path_.front()->index(),
++                                path.path_.back()->index())) {
+         auto &matchCache = (*context.matchCacheMap_)[path.trie()];
+         auto *result =
+             matchCache.find(path.path_, context.hasher_, context.hasher_);
+@@ -623,6 +720,13 @@ void PinyinDictionaryPrivate::findMatchesBetween(
+                   pinyin, *context.spProfile_, context.flags_)
+             : PinyinEncoder::stringToSyllablesWithFuzzyFlags(
+                   pinyin, context.correctionProfile_.get(), context.flags_);
++    const size_t offset = prevNode.index();
++    const MatchFuzzyFactorFn factorFn =
++        [&context, pinyin, offset](PinyinInitial initial, PinyinFinal final,
++                                   PinyinFuzzyFlags flags) {
++            return matchFuzzyFactor(context.pinyinContext_, pinyin, offset,
++                                    initial, final, flags);
++        };
+     const MatchedPinyinPaths &prevMatchedPaths = matchedPathsMap[&prevNode];
+     MatchedPinyinPaths newPaths;
+     for (const auto &path : prevMatchedPaths) {
+@@ -631,7 +735,9 @@ void PinyinDictionaryPrivate::findMatchesBetween(
+         segmentPath.push_back(&currentNode);
+ 
+         // A map from trie (dict) to a lru cache.
+-        if (context.nodeCacheMap_) {
++        if (context.nodeCacheMap_ &&
++            !context.dependsOnTouch(segmentPath.front()->index(),
++                                    currentNode.index())) {
+             auto &nodeCache = (*context.nodeCacheMap_)[path.trie()];
+             auto *p =
+                 nodeCache.find(segmentPath, context.hasher_, context.hasher_);
+@@ -642,7 +748,7 @@ void PinyinDictionaryPrivate::findMatchesBetween(
+                 nodeCache.insert(context.hasher_.pathToPinyins(segmentPath),
+                                  result);
+                 result->triePositions_ =
+-                    traverseAlongPathOneStepBySyllables(path, syls);
++                    traverseAlongPathOneStepBySyllables(path, syls, factorFn);
+             } else {
+                 result = *p;
+                 assert(result->size_ == path.size() + 1);
+@@ -657,7 +763,7 @@ void PinyinDictionaryPrivate::findMatchesBetween(
+                                   path.flags_);
+ 
+             newPaths.back().result_->triePositions_ =
+-                traverseAlongPathOneStepBySyllables(path, syls);
++                traverseAlongPathOneStepBySyllables(path, syls, factorFn);
+             // if there's nothing, pop it.
+             if (newPaths.back().triePositions().empty()) {
+                 newPaths.pop_back();
