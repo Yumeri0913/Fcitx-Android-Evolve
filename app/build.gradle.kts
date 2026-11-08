@@ -140,3 +140,11 @@ configurations {
         exclude(group = "com.louiscad.splitties", module = "splitties-systemservices")
     }
 }
+
+androidComponents {
+    onVariants { variant ->
+        // resValues of build types reference resources that only exist in the app itself,
+        // which breaks linking the instrumentation test APK since AGP 9
+        variant.androidTest?.resValues?.empty()
+    }
+}

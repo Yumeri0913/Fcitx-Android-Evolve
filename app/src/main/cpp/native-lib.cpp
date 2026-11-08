@@ -39,6 +39,7 @@
 #include <boost/iostreams/device/file_descriptor.hpp>
 #include <boost/iostreams/stream_buffer.hpp>
 #include "customphrase.h"
+#include "googlepinyin/userdata.h"
 
 #include "androidaddonloader/androidaddonloader.h"
 #include "androidfrontend/androidfrontend_public.h"
@@ -1290,3 +1291,42 @@ Java_org_fcitx_fcitx5_android_utils_Ini_writeAsIni(JNIEnv *env, jclass clazz, js
 }
 
 #pragma GCC diagnostic pop
+
+extern "C"
+JNIEXPORT jintArray JNICALL
+Java_org_fcitx_fcitx5_android_data_pinyin_GooglePinyinUserData_nativeMerge(JNIEnv *env, jclass clazz, jstring userDict, jstring history, jbyteArray tsv) {
+    try {
+        const auto len = env->GetArrayLength(tsv);
+        std::string buf(static_cast<size_t>(len), '\0');
+        env->GetByteArrayRegion(tsv, 0, len, reinterpret_cast<jbyte *>(buf.data()));
+        auto result = googlepinyin::mergeIntoUserData(
+                CString(env, userDict), CString(env, history), googlepinyin::fromTsv(buf));
+        const jint values[3] = {
+                static_cast<jint>(result.added),
+                static_cast<jint>(result.existing),
+                static_cast<jint>(result.invalid)
+        };
+        jintArray array = env->NewIntArray(3);
+        env->SetIntArrayRegion(array, 0, 3, values);
+        return array;
+    } catch (const std::exception &e) {
+        throwJavaException(env, e.what());
+        return nullptr;
+    }
+}
+
+extern "C"
+JNIEXPORT jbyteArray JNICALL
+Java_org_fcitx_fcitx5_android_data_pinyin_GooglePinyinUserData_nativeReadUserWords(JNIEnv *env, jclass clazz, jstring dict, jstring history) {
+    try {
+        const auto tsv = googlepinyin::toTsv(
+                googlepinyin::readUserWords(CString(env, dict), CString(env, history)));
+        jbyteArray array = env->NewByteArray(static_cast<jsize>(tsv.size()));
+        env->SetByteArrayRegion(array, 0, static_cast<jsize>(tsv.size()),
+                                reinterpret_cast<const jbyte *>(tsv.data()));
+        return array;
+    } catch (const std::exception &e) {
+        throwJavaException(env, e.what());
+        return nullptr;
+    }
+}

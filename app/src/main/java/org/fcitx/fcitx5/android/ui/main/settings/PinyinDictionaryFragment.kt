@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.reloadPinyinDict
+import org.fcitx.fcitx5.android.data.pinyin.GooglePinyinUserData
 import org.fcitx.fcitx5.android.data.pinyin.PinyinDictManager
 import org.fcitx.fcitx5.android.data.pinyin.dict.BuiltinDictionary
 import org.fcitx.fcitx5.android.data.pinyin.dict.GooglePinyinUserDict
@@ -150,14 +151,46 @@ class PinyinDictionaryFragment : Fragment(), OnItemChangedListener<PinyinDiction
         )
     }
 
+    /**
+     * Merge a Google Pinyin user dictionary into fcitx's own user dictionary and history,
+     * so that the words are learned, ranked and forgotten like words typed in fcitx.
+     */
+    private suspend fun importGooglePinyinUserDict(bytes: ByteArray) {
+        val ctx = requireContext()
+        val nm = ctx.notificationManager
+        val id = IMPORT_ID++
+        NotificationCompat.Builder(ctx, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_baseline_library_books_24)
+            .setContentTitle(getString(R.string.pinyin_dict))
+            .setContentText(getString(R.string.import_google_pinyin_user_dict))
+            .setOngoing(true)
+            .setProgress(100, 0, true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build().let { nm.notify(id, it) }
+        try {
+            // flush words learned so far, they would be lost when fcitx is stopped otherwise
+            viewModel.fcitx.runOnReady { save() }
+            val stats = withContext(Dispatchers.IO) { GooglePinyinUserData.import(bytes) }
+            ctx.toast(
+                getString(
+                    R.string.google_pinyin_dict_imported,
+                    stats.added, stats.existing, stats.skipped
+                )
+            )
+        } catch (e: Exception) {
+            ctx.importErrorDialog(e)
+        }
+        nm.cancel(id)
+    }
+
     private fun exportGooglePinyinUserDict(uri: Uri) {
         val ctx = requireContext()
         lifecycleScope.launch {
             try {
-                // flush user.dict to disk before reading it
+                // flush user.dict and user.history to disk before reading them
                 viewModel.fcitx.runOnReady { save() }
                 val count = withContext(Dispatchers.IO) {
-                    val (bytes, count) = PinyinDictManager.exportGooglePinyinUserDict()
+                    val (bytes, count) = GooglePinyinUserData.export()
                     ctx.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(bytes) }
                     count
                 }
@@ -202,6 +235,15 @@ class PinyinDictionaryFragment : Fragment(), OnItemChangedListener<PinyinDiction
                 ctx.importErrorDialog(R.string.invalid_dict)
                 return@launch
             }
+            if (fileName.endsWith(".${PinyinDictionary.Type.Text.ext}")) {
+                val bytes = withContext(Dispatchers.IO) {
+                    cr.openInputStream(uri)!!.use { it.readBytes() }
+                }
+                if (GooglePinyinUserDict.looksLikeGooglePinyin(bytes)) {
+                    importGooglePinyinUserDict(bytes)
+                    return@launch
+                }
+            }
             val entryName = fileName.substringBeforeLast('.')
             if (ui.entries.any { it.name == entryName }) {
                 ctx.importErrorDialog(R.string.dict_already_exists)
@@ -220,10 +262,7 @@ class PinyinDictionaryFragment : Fragment(), OnItemChangedListener<PinyinDiction
                     val inputStream = cr.openInputStream(uri)!!
                     PinyinDictManager.importFromInputStream(inputStream, fileName).getOrThrow()
                 }
-                ui.addItem(item = imported.dictionary)
-                imported.googlePinyin?.let {
-                    ctx.toast(getString(R.string.google_pinyin_dict_imported, it.entries.size, it.skipped))
-                }
+                ui.addItem(item = imported)
             } catch (e: Exception) {
                 ctx.importErrorDialog(e)
             }

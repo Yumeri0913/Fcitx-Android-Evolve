@@ -327,7 +327,7 @@
     <string name="toggle_chinese_english">Toggle Chinese/English</string>
     <string name="import_google_pinyin_user_dict">Import Google Pinyin user dictionary</string>
     <string name="export_google_pinyin_user_dict">Export as Google Pinyin user dictionary</string>
-    <string name="google_pinyin_dict_imported">Imported %1$d words from Google Pinyin, skipped %2$d lines</string>
+    <string name="google_pinyin_dict_imported">Google Pinyin words merged into user dictionary: %1$d added, %2$d already existed, %3$d lines skipped</string>
     <string name="google_pinyin_dict_exported">Exported %1$d words</string>
     <string name="google_pinyin_dict_no_entry">No pinyin word found in this Google Pinyin user dictionary</string>
     <string name="keyboard_height_mode">Keyboard height mode</string>

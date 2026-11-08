@@ -132,6 +132,23 @@ object FcitxDaemon {
     }
 
     /**
+     * Run [block] while fcitx is stopped, then start it again (only if it was running),
+     * keeping clients connected. Use it to modify files that fcitx only reads on startup
+     * and overwrites on exit, e.g. pinyin `user.dict` and `user.history`.
+     *
+     * Blocks the calling thread; do not call it from the fcitx thread.
+     */
+    fun <T> withFcitxStopped(block: () -> T): T = lock.withLock {
+        val wasReady = realFcitx.isReady
+        if (wasReady) realFcitx.stop()
+        try {
+            block()
+        } finally {
+            if (wasReady) realFcitx.start()
+        }
+    }
+
+    /**
      * Stop fcitx instance regardless of connected clients.
      * Should only be used before importing user configuration files,
      * then the App must be restarted as soon as possible.

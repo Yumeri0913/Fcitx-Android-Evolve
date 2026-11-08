@@ -105,25 +105,6 @@ class GooglePinyinUserDictTest {
     }
 
     @Test
-    fun convertsToLibimeText() {
-        val entries = listOf(Entry("你好", listOf("ni", "hao"), 5), Entry("绿", listOf("lv")))
-        assertEquals("你好 ni'hao 0\n绿 lv 0\n", GooglePinyinUserDict.toLibimeText(entries))
-    }
-
-    @Test
-    fun parsesLibimeSaveTextOutput() {
-        val text = "你好 ni'hao 0\n中国 zhong'guo -1.5\n\"a b\" a 0\n你好 ni'hao 0\n"
-        assertEquals(
-            listOf(
-                Entry("你好", listOf("ni", "hao")),
-                Entry("中国", listOf("zhong", "guo")),
-                Entry("a b", listOf("a")),
-            ),
-            GooglePinyinUserDict.parseLibimeText(text)
-        )
-    }
-
-    @Test
     fun writesGoogleFormatThatRoundTrips() {
         val entries = listOf(Entry("你好", listOf("ni", "hao"), 5), Entry("长城", listOf("chang", "cheng")))
         val bytes = GooglePinyinUserDict.toGooglePinyinBytes(entries)

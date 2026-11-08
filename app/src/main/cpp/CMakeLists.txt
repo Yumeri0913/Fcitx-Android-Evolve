@@ -44,7 +44,7 @@ add_library(pinyin-customphrase STATIC "${CHINESE_ADDONS_PINYIN_DIR}/customphras
 target_include_directories(pinyin-customphrase INTERFACE "${CHINESE_ADDONS_PINYIN_DIR}")
 target_link_libraries(pinyin-customphrase PRIVATE Fcitx5::Utils LibIME::Core)
 
-add_library(native-lib SHARED native-lib.cpp androidaddonloader/androidaddonloader.cpp)
+add_library(native-lib SHARED native-lib.cpp androidaddonloader/androidaddonloader.cpp googlepinyin/userdata.cpp)
 target_link_libraries(native-lib
         log
         libuv::uv_a
@@ -56,6 +56,7 @@ target_link_libraries(native-lib
         Fcitx5::Module::Clipboard
         Boost::headers
         Boost::iostreams
+        LibIME::Core
         LibIME::Pinyin
         LibIME::Table
         pinyin-customphrase

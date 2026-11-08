@@ -12,7 +12,7 @@ import java.nio.charset.CodingErrorAction
 /**
  * Reader/writer for the user dictionary text file produced by Google Pinyin for Android
  * (Settings -> Dictionary -> Export user dictionary, `GooglePinyinInput/user-dictionary.txt`),
- * and converter from/to libime's text dictionary format.
+ * and the [Entry] model shared with fcitx user data import/export ([org.fcitx.fcitx5.android.data.pinyin.GooglePinyinUserData]).
  *
  * Google Pinyin export format:
  * - UTF-16LE with BOM, `\n` line endings
@@ -24,8 +24,6 @@ import java.nio.charset.CodingErrorAction
  * starting with `#` or `;` are comments, fields are separated by TAB (or a single space when
  * the line has no TAB), and the order of the first three fields does not matter.
  * [parse] follows the same rules.
- *
- * libime text format: `word pin'yin [cost]`, separated by whitespace.
  */
 object GooglePinyinUserDict {
 
@@ -34,7 +32,10 @@ object GooglePinyinUserDict {
     /** Default file name used by Google Pinyin for export/import */
     const val DEFAULT_FILE_NAME = "user-dictionary.txt"
 
-    /** Name prefix of libime dictionaries converted from a Google Pinyin user dictionary */
+    /**
+     * Name prefix of extra libime dictionaries created by an earlier version, which imported
+     * Google Pinyin words as a separate dictionary. Still included when exporting.
+     */
     const val IMPORTED_DICT_PREFIX = "谷歌拼音_"
 
     data class Entry(val word: String, val syllables: List<String>, val count: Int = 1) {
@@ -210,67 +211,6 @@ object GooglePinyinUserDict {
         if (syllables.isEmpty() || syllables.any { it !in VALID_SYLLABLES }) return null
         if (hanLength(w) != syllables.size) return null
         return Entry(w, syllables, count ?: 1)
-    }
-
-    /** Convert entries to libime text dictionary content */
-    fun toLibimeText(entries: List<Entry>): String = buildString {
-        entries.forEach { append(it.word).append(' ').append(it.libimePinyin).append(" 0\n") }
-    }
-
-    private fun unescapeLibimeValue(token: String): String {
-        if (token.length < 2 || !token.startsWith('"') || !token.endsWith('"')) return token
-        val inner = token.substring(1, token.length - 1)
-        val sb = StringBuilder(inner.length)
-        var i = 0
-        while (i < inner.length) {
-            val c = inner[i]
-            if (c == '\\' && i + 1 < inner.length) {
-                when (val n = inner[i + 1]) {
-                    'n' -> sb.append('\n')
-                    else -> sb.append(n)
-                }
-                i += 2
-            } else {
-                sb.append(c)
-                i++
-            }
-        }
-        return sb.toString()
-    }
-
-    /**
-     * Parse libime text dictionary content (as produced by `PinyinDictionary::saveText`,
-     * `word pin'yin cost` per line).
-     */
-    fun parseLibimeText(text: String): List<Entry> {
-        val result = LinkedHashMap<Pair<String, String>, Entry>()
-        text.lineSequence().forEach { raw ->
-            val line = raw.trim()
-            if (line.isEmpty()) return@forEach
-            val (wordToken, rest) = if (line.startsWith('"')) {
-                // quoted word, find the closing quote that is not escaped
-                var end = 1
-                while (end < line.length) {
-                    if (line[end] == '\\') end += 2
-                    else if (line[end] == '"') break
-                    else end++
-                }
-                if (end >= line.length) return@forEach
-                line.substring(0, end + 1) to line.substring(end + 1).trim()
-            } else {
-                val sp = line.indexOfFirst { it.isWhitespace() }
-                if (sp < 0) return@forEach
-                line.substring(0, sp) to line.substring(sp + 1).trim()
-            }
-            val pinyin = rest.split(Regex("\\s+")).firstOrNull()?.takeIf { it.isNotEmpty() }
-                ?: return@forEach
-            val word = unescapeLibimeValue(wordToken)
-            val syllables = pinyin.split('\'').filter { it.isNotEmpty() }
-            if (word.isEmpty() || syllables.isEmpty()) return@forEach
-            val e = Entry(word, syllables, 1)
-            result.putIfAbsent(word to e.libimePinyin, e)
-        }
-        return result.values.toList()
     }
 
     /** Serialize entries to Google Pinyin user dictionary bytes (UTF-16LE with BOM) */
