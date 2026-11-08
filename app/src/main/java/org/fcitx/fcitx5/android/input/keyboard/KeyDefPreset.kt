@@ -198,9 +198,10 @@ class LanguageKey : KeyDef(
         variant = Variant.AltForeground,
         viewId = R.id.button_lang
     ),
+    // long press used to show the input method picker; removed so that
+    // the globe key never switches to other input methods
     setOf(
-        Behavior.Press(KeyAction.LangSwitchAction),
-        Behavior.LongPress(KeyAction.ShowInputMethodPickerAction)
+        Behavior.Press(KeyAction.LangSwitchAction)
     )
 )
 

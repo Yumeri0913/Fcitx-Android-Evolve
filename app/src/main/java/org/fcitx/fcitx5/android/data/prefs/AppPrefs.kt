@@ -178,11 +178,12 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val spaceSwipeMoveCursor =
             switch(R.string.space_swipe_move_cursor, "space_swipe_move_cursor", true)
         val showLangSwitchKey =
-            switch(R.string.show_lang_switch_key, "show_lang_switch_key", false)
+            switch(R.string.show_lang_switch_key, "show_lang_switch_key", true)
         val langSwitchKeyBehavior = enumList(
             R.string.lang_switch_key_behavior,
             "lang_switch_key_behavior",
-            LangSwitchBehavior.Enumerate
+            // globe key only toggles between Chinese and English, like Google Pinyin's 中/英 switch
+            LangSwitchBehavior.ToggleActivate
         ) { showLangSwitchKey.getValue() }
 
         val keyboardHeightPercent: ManagedPreference.PInt
