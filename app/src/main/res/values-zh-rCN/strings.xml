@@ -330,4 +330,7 @@
     <string name="google_pinyin_dict_imported">已从谷歌拼音导入 %1$d 个词，跳过 %2$d 行</string>
     <string name="google_pinyin_dict_exported">已导出 %1$d 个词</string>
     <string name="google_pinyin_dict_no_entry">该谷歌拼音用户词库中没有可用的拼音词条</string>
+    <string name="keyboard_height_mode">键盘高度模式</string>
+    <string name="keyboard_height_mode_google_pinyin">与谷歌拼音相同</string>
+    <string name="keyboard_height_mode_percent">按屏幕高度百分比</string>
 </resources>

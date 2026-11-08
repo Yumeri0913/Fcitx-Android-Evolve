@@ -17,6 +17,7 @@ import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesMode
 import org.fcitx.fcitx5.android.input.candidates.floating.FloatingCandidatesOrientation
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateMode
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase
+import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightMode
 import org.fcitx.fcitx5.android.input.keyboard.LangSwitchBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior
 import org.fcitx.fcitx5.android.input.keyboard.SwipeSymbolDirection
@@ -186,6 +187,12 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             LangSwitchBehavior.ToggleActivate
         ) { showLangSwitchKey.getValue() }
 
+        val keyboardHeightMode = enumList(
+            R.string.keyboard_height_mode,
+            "keyboard_height_mode",
+            KeyboardHeightMode.GooglePinyin
+        )
+
         val keyboardHeightPercent: ManagedPreference.PInt
         val keyboardHeightPercentLandscape: ManagedPreference.PInt
 
@@ -200,7 +207,8 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
                 49,
                 10,
                 90,
-                "%"
+                "%",
+                enableUiOn = { keyboardHeightMode.getValue() == KeyboardHeightMode.Percent }
             )
             keyboardHeightPercent = primary
             keyboardHeightPercentLandscape = secondary

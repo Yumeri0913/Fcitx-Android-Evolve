@@ -34,6 +34,7 @@ import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateC
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.DisplayMetrics
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightPercentBase.RealSize
+import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightMode
 import org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow
 import org.fcitx.fcitx5.android.input.picker.emojiPicker
 import org.fcitx.fcitx5.android.input.picker.emoticonPicker
@@ -134,6 +135,7 @@ class InputView(
 
     private val focusChangeResetKeyboard by keyboardPrefs.focusChangeResetKeyboard
 
+    private val keyboardHeightMode = keyboardPrefs.keyboardHeightMode
     private val keyboardHeightPercent = keyboardPrefs.keyboardHeightPercent
     private val keyboardHeightPercentLandscape = keyboardPrefs.keyboardHeightPercentLandscape
     private val keyboardSidePadding = keyboardPrefs.keyboardSidePadding
@@ -145,6 +147,7 @@ class InputView(
     private val keyboardHeightPercentBase = advancedPrefs.keyboardHeightPercentBase
 
     private val keyboardSizePrefs = listOf(
+        keyboardHeightMode,
         keyboardHeightPercent,
         keyboardHeightPercentLandscape,
         keyboardSidePadding,
@@ -156,6 +159,9 @@ class InputView(
 
     private val keyboardHeightPx: Int
         get() {
+            if (keyboardHeightMode.getValue() == KeyboardHeightMode.GooglePinyin) {
+                return dp(KeyboardHeightMode.googlePinyinBodyHeightDp(resources.configuration))
+            }
             val baseType = keyboardHeightPercentBase.getValue()
             val base = when (baseType) {
                 DisplayMetrics -> resources.displayMetrics.heightPixels

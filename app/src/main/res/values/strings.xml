@@ -330,4 +330,7 @@
     <string name="google_pinyin_dict_imported">Imported %1$d words from Google Pinyin, skipped %2$d lines</string>
     <string name="google_pinyin_dict_exported">Exported %1$d words</string>
     <string name="google_pinyin_dict_no_entry">No pinyin word found in this Google Pinyin user dictionary</string>
+    <string name="keyboard_height_mode">Keyboard height mode</string>
+    <string name="keyboard_height_mode_google_pinyin">Same as Google Pinyin</string>
+    <string name="keyboard_height_mode_percent">Percentage of screen height</string>
 </resources>

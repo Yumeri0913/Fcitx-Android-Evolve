@@ -21,6 +21,7 @@ import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.data.theme.ThemePrefs.NavbarBackground
+import org.fcitx.fcitx5.android.input.keyboard.KeyboardHeightMode
 import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
 import org.fcitx.fcitx5.android.utils.navbarFrameHeight
 import splitties.dimensions.dp
@@ -48,6 +49,7 @@ class KeyboardPreviewUi(override val ctx: Context, val theme: Theme) : Ui {
         private set
 
     private val keyboardPrefs = AppPrefs.getInstance().keyboard
+    private val keyboardHeightMode by keyboardPrefs.keyboardHeightMode
     private val keyboardHeightPercent by keyboardPrefs.keyboardHeightPercent
     private val keyboardHeightPercentLandscape by keyboardPrefs.keyboardHeightPercentLandscape
     private val keyboardSidePadding by keyboardPrefs.keyboardSidePadding
@@ -129,6 +131,10 @@ class KeyboardPreviewUi(override val ctx: Context, val theme: Theme) : Ui {
         val displayMetrics = resources.displayMetrics
         val w = displayMetrics.widthPixels
         val h = displayMetrics.heightPixels
+        if (keyboardHeightMode == KeyboardHeightMode.GooglePinyin) {
+            val dp = KeyboardHeightMode.googlePinyinBodyHeightDp(resources.configuration)
+            return w to (dp * displayMetrics.density).toInt()
+        }
         val hPercent = when (resources.configuration.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> keyboardHeightPercentLandscape
             else -> keyboardHeightPercent
