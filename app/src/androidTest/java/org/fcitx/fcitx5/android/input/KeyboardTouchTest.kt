@@ -205,4 +205,114 @@ class KeyboardTouchTest {
         tap(g.exactCenterX(), g.exactCenterY())
         assertEquals(listOf("G"), typed())
     }
+
+    private fun syms(sym: Int) = actions.count {
+        it is KeyAction.SymAction && it.sym.sym == sym
+    }
+
+    @Test
+    fun letterVerticalDragNeverSwitchesRows() {
+        val g = keyRect('g')
+        val t = keyRect('t')
+        down(0, g.exactCenterX(), g.exactCenterY())
+        move(0, g.exactCenterX(), g.top - 5f)
+        move(0, g.exactCenterX(), t.exactCenterY())
+        up(0)
+        // dragging up types the letter itself, never the key above
+        assertEquals(listOf("g"), typed())
+    }
+
+    @Test
+    fun letterDragFarDownStillTypesSymbol() {
+        val g = keyRect('g')
+        down(0, g.exactCenterX(), g.exactCenterY())
+        move(0, g.exactCenterX(), g.exactCenterY() + 30 * density)
+        move(0, g.exactCenterX(), keyboard.height + 120 * density)
+        up(0)
+        assertEquals(listOf("="), typed())
+    }
+
+    @Test
+    fun gapBetweenKeysIsHysteresis() {
+        val g = keyRect('g')
+        val h = keyRect('h')
+        down(0, g.exactCenterX(), g.exactCenterY())
+        // inside the cell of h but not yet on its visible key
+        move(0, h.left + 1f, g.exactCenterY())
+        up(0)
+        assertEquals(listOf("g"), typed())
+    }
+
+    @Test
+    fun lettersTypedWhileHoldingShiftAreUpperCase() {
+        val caps = viewRect(org.fcitx.fcitx5.android.R.id.button_caps)
+        val g = keyRect('g')
+        val h = keyRect('h')
+        val j = keyRect('j')
+        down(0, caps.exactCenterX(), caps.exactCenterY())
+        down(1, g.exactCenterX(), g.exactCenterY()); up(1)
+        down(1, h.exactCenterX(), h.exactCenterY()); up(1)
+        up(0)
+        Thread.sleep(400)
+        tap(j.exactCenterX(), j.exactCenterY())
+        // released shift after chording: back to lower case
+        assertEquals(listOf("G", "H", "j"), typed())
+    }
+
+    @Test
+    fun shiftDoubleTapLocks() {
+        val caps = viewRect(org.fcitx.fcitx5.android.R.id.button_caps)
+        val g = keyRect('g')
+        val h = keyRect('h')
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        Thread.sleep(100)
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        Thread.sleep(400)
+        tap(g.exactCenterX(), g.exactCenterY())
+        tap(h.exactCenterX(), h.exactCenterY())
+        assertEquals(listOf("G", "H"), typed())
+    }
+
+    @Test
+    fun secondFingerStopsRepeatingDelete() {
+        val del = viewRect(org.fcitx.fcitx5.android.R.id.button_backspace)
+        val a = keyRect('a')
+        down(0, del.exactCenterX(), del.exactCenterY())
+        Thread.sleep(700)
+        val repeated = syms(0xff08)
+        assertTrue("repeat started: $repeated", repeated > 0)
+        down(1, a.exactCenterX(), a.exactCenterY())
+        Thread.sleep(400)
+        up(1)
+        up(0)
+        assertEquals(repeated, syms(0xff08))
+        assertEquals(listOf("a"), typed())
+    }
+
+    private fun scrubSpace(): Pair<Int, Int> {
+        val space = viewRect(org.fcitx.fcitx5.android.R.id.button_space)
+        down(0, space.exactCenterX(), space.exactCenterY())
+        Thread.sleep(250)
+        for (i in 1..5) {
+            move(0, space.exactCenterX() + i * 12 * density, space.exactCenterY())
+            Thread.sleep(30)
+        }
+        up(0)
+        return syms(0x20) to syms(0xff53)
+    }
+
+    @Test
+    fun spaceScrubIsInhibitedRightAfterTyping() {
+        val a = keyRect('a')
+        tap(a.exactCenterX(), a.exactCenterY())
+        // within 150ms of the release: a plain space, cursor does not move
+        val (spaces, rights) = scrubSpace()
+        assertEquals(1, spaces)
+        assertEquals(0, rights)
+        actions.clear()
+        Thread.sleep(300)
+        val (spaces2, rights2) = scrubSpace()
+        assertEquals(0, spaces2)
+        assertTrue("cursor moved: $rights2", rights2 > 0)
+    }
 }

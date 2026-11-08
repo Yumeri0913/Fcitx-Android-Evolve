@@ -6,6 +6,8 @@ package org.fcitx.fcitx5.android.input.keyboard
 
 import android.content.Context
 import android.graphics.Rect
+import android.graphics.RectF
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import androidx.annotation.CallSuper
@@ -94,6 +96,8 @@ abstract class BaseKeyboard(
 
     init {
         isMotionEventSplittingEnabled = true
+        // Google Pinyin keyboard body: 6dp top padding, keys are drawn at the top of their cells
+        if (keyLayout.size > 1) setPadding(0, dp(6), 0, 0)
         keyRows = keyLayout.map { row ->
             val keyViews = row.map(::createKeyView)
             constraintLayout Row@{
@@ -170,8 +174,11 @@ abstract class BaseKeyboard(
                     def is SymbolKey || def is NumPadKey
             commitOnNextPointer = slideSwitchable || def is SpaceKey ||
                     def is BackspaceKey || def is CommaKey
+            isLetter = def is AlphabetKey || def is AlphabetDigitKey
             if (slideSwitchable) {
                 outsideTolerance = keyOutsideTolerance
+                // Google Pinyin: dragging a letter up or down never cancels it
+                outsideToleranceY = if (isLetter) 1e6f else keyOutsideTolerance
             }
             if (def is AlphabetKey) {
                 def.character.lowercase().singleOrNull()?.let { alphabetKeyViews.add(it to this) }
@@ -181,6 +188,7 @@ abstract class BaseKeyboard(
                 swipeEnabled = spaceSwipeMoveCursor.getValue()
                 swipeRepeatEnabled = true
                 swipeStartDelay = spaceSwipeStartDelay
+                restartLongPressOnDrift = true
                 swipeThresholdX = spaceSwipeThreshold
                 swipeThresholdY = disabledSwipeThreshold
                 onGestureListener = OnGestureListener { view, event ->
@@ -324,9 +332,12 @@ abstract class BaseKeyboard(
                             view as KeyView
                             if (popupOnKeyPress) {
                                 when (event.type) {
-                                    GestureType.Down -> onPopupAction(
-                                        PopupAction.PreviewAction(view.id, it.content, view.bounds)
-                                    )
+                                    GestureType.Down -> {
+                                        cancelPreviewDismiss(view.id)
+                                        onPopupAction(
+                                            PopupAction.PreviewAction(view.id, it.content, view.bounds)
+                                        )
+                                    }
                                     GestureType.Move -> {
                                         val triggered = swipeSymbolDirection.checkY(event.totalY)
                                         val text = if (triggered) it.alternative else it.content
@@ -334,9 +345,7 @@ abstract class BaseKeyboard(
                                             PopupAction.PreviewUpdateAction(view.id, text)
                                         )
                                     }
-                                    GestureType.Up -> {
-                                        onPopupAction(PopupAction.DismissAction(view.id))
-                                    }
+                                    GestureType.Up -> dismissPreviewLater(view.id)
                                 }
                             }
                             // never consume gesture in preview popup
@@ -349,12 +358,13 @@ abstract class BaseKeyboard(
                             view as KeyView
                             if (popupOnKeyPress) {
                                 when (event.type) {
-                                    GestureType.Down -> onPopupAction(
-                                        PopupAction.PreviewAction(view.id, it.content, view.bounds)
-                                    )
-                                    GestureType.Up -> {
-                                        onPopupAction(PopupAction.DismissAction(view.id))
+                                    GestureType.Down -> {
+                                        cancelPreviewDismiss(view.id)
+                                        onPopupAction(
+                                            PopupAction.PreviewAction(view.id, it.content, view.bounds)
+                                        )
                                     }
+                                    GestureType.Up -> dismissPreviewLater(view.id)
                                     else -> {}
                                 }
                             }
@@ -432,7 +442,8 @@ abstract class BaseKeyboard(
         val iterator = touchTargets.entries.iterator()
         while (iterator.hasNext()) {
             val (pid, target) = iterator.next()
-            if (!target.view.commitOnNextPointer || !target.view.canSlideAway) continue
+            // a repeating key just stops, a long press popup commits its selection
+            if (!target.view.commitOnNextPointer) continue
             val index = event.findPointerIndex(pid)
             if (index < 0) continue
             dispatchMotionEventToTarget(event, MotionEvent.ACTION_UP, index, target)
@@ -440,31 +451,86 @@ abstract class BaseKeyboard(
         }
     }
 
+    /** Visible key rectangle (keyboard coordinates) of a touch target, see [KeyView.visibleTopInset] */
+    private fun visibleRect(target: TouchTarget): RectF = target.hitRect.let { r ->
+        RectF(
+            (r.left + target.view.visibleLeftInset).toFloat(),
+            (r.top + target.view.visibleTopInset).toFloat(),
+            (r.right - target.view.visibleRightInset).toFloat(),
+            (r.bottom - target.view.visibleBottomInset).toFloat()
+        )
+    }
+
     /**
-     * Google Pinyin style sliding: when the finger leaves a letter key for another one, the press
-     * moves to the key under the finger instead of being lost. A vertical slide in the direction
-     * of the swipe symbol stays on the key, so swipe input still works.
+     * Google Pinyin style sliding: when the finger leaves a letter (or symbol) key for another
+     * one, the press moves to the key under the finger instead of being lost.
+     * - the dominant direction of movement since touch down (or since sliding onto the key)
+     *   decides; a tie counts as horizontal
+     * - letters only leave sideways: vertical drags are swipe input
+     * - the finger must be past the visible edge of the current key, and on the visible part of
+     *   the next key, which leaves the gaps between keys as hysteresis; 0.3 inch past the edge
+     *   it switches to whatever key the finger is on
+     * - a key already held by another finger is not taken
      */
     private fun maybeSlideToAnotherKey(event: MotionEvent, index: Int, target: TouchTarget): Boolean {
         val view = target.view
         if (!view.slideSwitchable || !view.canSlideAway) return false
         val x = event.getX(index)
         val y = event.getY(index)
-        if (target.hitRect.contains(x.roundToInt(), y.roundToInt())) return false
         val dx = x - target.downX
         val dy = y - target.downY
-        if (view.swipeEnabled && dy.absoluteValue >= dx.absoluteValue &&
-            swipeSymbolDirection != SwipeSymbolDirection.Disabled &&
-            (dy > 0) == (swipeSymbolDirection == SwipeSymbolDirection.Down)
-        ) return false
+        val vertical = dy.absoluteValue > dx.absoluteValue
+        if (vertical && view.isLetter) return false
+        val r = visibleRect(target)
+        val beyond = if (vertical) {
+            if (dy > 0) y - r.bottom else r.top - y
+        } else {
+            if (dx > 0) x - r.right else r.left - x
+        }
+        if (beyond <= 0f) return false
         val newTarget = findTouchTarget(event, index) ?: return false
         if (newTarget.view === view || !newTarget.view.slideSwitchable) return false
+        if (beyond <= keyOutsideTolerance && !visibleRect(newTarget).contains(x, y)) return false
+        if (touchTargets.values.any { it.view === newTarget.view }) return false
         dispatchMotionEventToTarget(event, MotionEvent.ACTION_CANCEL, index, target)
+        cancelPreviewDismiss(view.id)
         onPopupAction(PopupAction.DismissAction(view.id))
         newTarget.view.markNextPressSlidIn()
         touchTargets[event.getPointerId(index)] = newTarget
         dispatchMotionEventToTarget(event, MotionEvent.ACTION_DOWN, index, newTarget)
         return true
+    }
+
+    private val pendingPreviewDismiss = HashMap<Int, Runnable>()
+
+    private fun cancelPreviewDismiss(viewId: Int) {
+        pendingPreviewDismiss.remove(viewId)?.let { removeCallbacks(it) }
+    }
+
+    /** Google Pinyin keeps the key preview for 100ms after release */
+    private fun dismissPreviewLater(viewId: Int) {
+        cancelPreviewDismiss(viewId)
+        val r = Runnable {
+            pendingPreviewDismiss.remove(viewId)
+            onPopupAction(PopupAction.DismissAction(viewId))
+        }
+        pendingPreviewDismiss[viewId] = r
+        postDelayed(r, PREVIEW_DISMISS_DELAY)
+    }
+
+    /** When the last finger lifted, for the space scrub inhibition */
+    private var lastPointerUpTime = 0L
+
+    /**
+     * Google Pinyin: no cursor scrub on a space touched within 150ms after a finger lifted,
+     * so fast typing does not move the cursor by accident
+     */
+    private fun beforePress(target: TouchTarget) {
+        if (target.view in spaceKeys &&
+            SystemClock.uptimeMillis() - lastPointerUpTime < SPACE_SCRUB_INHIBIT
+        ) {
+            target.view.suppressSwipeForNextPress = true
+        }
     }
 
     /**
@@ -505,6 +571,7 @@ abstract class BaseKeyboard(
                 val pid = event.getPointerId(0)
                 val target = findTouchTarget(event, 0) ?: return false
                 touchTargets[pid] = target
+                beforePress(target)
                 dispatchMotionEventToTarget(event, MotionEvent.ACTION_DOWN, 0, target)
                 return true
             }
@@ -514,6 +581,7 @@ abstract class BaseKeyboard(
                 val pid = event.getPointerId(i)
                 val target = findTouchTarget(event, i) ?: return true
                 touchTargets[pid] = target
+                beforePress(target)
                 dispatchMotionEventToTarget(event, MotionEvent.ACTION_DOWN, i, target)
                 return true
             }
@@ -529,12 +597,14 @@ abstract class BaseKeyboard(
             MotionEvent.ACTION_POINTER_UP -> {
                 val i = event.actionIndex
                 val pid = event.getPointerId(i)
+                lastPointerUpTime = SystemClock.uptimeMillis()
                 val target = touchTargets[pid] ?: return true
                 dispatchMotionEventToTarget(event, MotionEvent.ACTION_UP, i, target)
                 touchTargets.remove(pid)
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                lastPointerUpTime = SystemClock.uptimeMillis()
                 val pid = event.getPointerId(0)
                 val target = touchTargets[pid]
                 if (target == null) {
@@ -615,4 +685,9 @@ abstract class BaseKeyboard(
         releaseAllTouchTargets()
     }
 
+
+    companion object {
+        private const val PREVIEW_DISMISS_DELAY = 100L
+        private const val SPACE_SCRUB_INHIBIT = 150L
+    }
 }

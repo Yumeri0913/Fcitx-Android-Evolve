@@ -95,6 +95,11 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
     var commitOnNextPointer = false
 
     /**
+     * Letter keys never move the press to another row: vertical drags are swipe input
+     */
+    var isLetter = false
+
+    /**
      * KeyView content left margin, in percentage of parent width
      */
     @FloatRange(0.0, 1.0)
@@ -153,7 +158,19 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
             }
         }
         add(appearanceView, lParams(matchParent, matchParent))
+        // Google Pinyin draws keys at the top of their cell with the whole vertical gap below
+        // them, so the touch area reaches below the visible key (fingers tend to hit low).
+        // Only the drawing moves; touch handling still uses the whole cell.
+        appearanceView.translationY = -vMargin.toFloat()
     }
+
+    /**
+     * Insets from the cell (this view) to the visible key, see the translation above
+     */
+    val visibleLeftInset get() = hMargin
+    val visibleRightInset get() = hMargin
+    val visibleTopInset get() = 0
+    val visibleBottomInset get() = 2 * vMargin
 
     private fun setupPressHighlight(mask: Drawable? = null) {
         appearanceView.foreground = if (rippled) {

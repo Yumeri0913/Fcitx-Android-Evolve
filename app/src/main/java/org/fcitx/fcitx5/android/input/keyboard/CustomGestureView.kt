@@ -15,6 +15,7 @@ import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.data.InputFeedbacks
@@ -97,6 +98,26 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
     var outsideTolerance: Float = touchSlop
 
     /**
+     * Same as [outsideTolerance] but vertically. Google Pinyin letter keys never cancel on a
+     * vertical drag: up types the letter, down types the swipe symbol.
+     */
+    var outsideToleranceY: Float = touchSlop
+
+    /**
+     * Disable swipe for the next press only (e.g. space pressed right after another finger lifted)
+     */
+    var suppressSwipeForNextPress = false
+    private var swipeSuppressed = false
+
+    /**
+     * Google Pinyin space: the long press timer restarts while the finger keeps drifting
+     * horizontally, so a moving finger does not open the long press action
+     */
+    var restartLongPressOnDrift = false
+    private var lastDriftX = 0f
+    private val driftThreshold = ctx.resources.displayMetrics.density * 1.1f // ~0.5pt
+
+    /**
      * Swipe distance is not consumed until this long (ms) after touch down, so a quick tap that
      * drifts a little is still a tap. Movement in the meantime is consumed once the delay passes.
      */
@@ -154,9 +175,9 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
 
     private fun pointInView(x: Float, y: Float): Boolean {
         return -outsideTolerance <= x &&
-                -outsideTolerance <= y &&
+                -outsideToleranceY <= y &&
                 x < (width + outsideTolerance) &&
-                y < (height + outsideTolerance)
+                y < (height + outsideToleranceY)
     }
 
     private fun resetState() {
@@ -202,6 +223,8 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
             MotionEvent.ACTION_DOWN -> {
                 pressSlidIn = nextPressSlidIn
                 nextPressSlidIn = false
+                swipeSuppressed = suppressSwipeForNextPress
+                suppressSwipeForNextPress = false
                 if (!isEnabled) return false
                 downTime = SystemClock.uptimeMillis()
                 drawableHotspotChanged(x, y)
@@ -209,17 +232,8 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                 InputFeedbacks.hapticFeedback(this)
                 InputFeedbacks.soundEffect(soundEffect)
                 dispatchGestureEvent(GestureType.Down, x, y)
-                if (longPressEnabled) {
-                    longPressJob?.cancel()
-                    longPressJob = lifecycleScope.launch {
-                        val factor = if (pressSlidIn) SlidInLongPressFactor else 1f
-                        delay((longPressDelay * factor).toLong())
-                        if (longPressFeedbackEnabled) {
-                            InputFeedbacks.hapticFeedback(this@CustomGestureView, true)
-                        }
-                        longPressTriggered = performLongClick()
-                    }
-                }
+                lastDriftX = x
+                if (longPressEnabled) startLongPressTimer()
                 if (repeatEnabled) {
                     repeatJob?.cancel()
                     repeatJob = lifecycleScope.launch {
@@ -285,7 +299,13 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                         isPressed = false
                     }
                 }
-                if (!swipeEnabled || longPressTriggered || repeatStarted) return true
+                if (restartLongPressOnDrift && longPressEnabled && !longPressTriggered &&
+                    longPressJob != null && abs(x - lastDriftX) >= driftThreshold
+                ) {
+                    lastDriftX = x
+                    startLongPressTimer()
+                }
+                if (!swipeEnabled || swipeSuppressed || longPressTriggered || repeatStarted) return true
                 if (swipeStartDelay > 0 && SystemClock.uptimeMillis() - downTime < swipeStartDelay) {
                     // keep accumulating from the last consumed position
                     return true
@@ -359,6 +379,18 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
             }
         }
         return count
+    }
+
+    private fun startLongPressTimer() {
+        longPressJob?.cancel()
+        longPressJob = lifecycleScope.launch {
+            val factor = if (pressSlidIn) SlidInLongPressFactor else 1f
+            delay((longPressDelay * factor).toLong())
+            if (longPressFeedbackEnabled) {
+                InputFeedbacks.hapticFeedback(this@CustomGestureView, true)
+            }
+            longPressTriggered = performLongClick()
+        }
     }
 
     override fun setOnLongClickListener(l: OnLongClickListener?) {

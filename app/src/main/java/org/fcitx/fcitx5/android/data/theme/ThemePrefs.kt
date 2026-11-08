@@ -70,10 +70,12 @@ class ThemePrefs(sharedPreferences: SharedPreferences) :
             R.string.key_vertical_margin,
             R.string.portrait,
             "key_vertical_margin",
-            7,
+            // Google Pinyin: 10dp gap below each key (drawn as 2 x margin below the key)
+            5,
             R.string.landscape,
             "key_vertical_margin_landscape",
-            4,
+            // Google Pinyin landscape: 4dp gap below each key
+            2,
             0,
             24,
             "dp"

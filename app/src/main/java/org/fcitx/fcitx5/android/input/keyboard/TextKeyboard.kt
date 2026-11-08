@@ -6,6 +6,7 @@ package org.fcitx.fcitx5.android.input.keyboard
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.SystemClock
 import android.view.View
 import androidx.annotation.Keep
 import androidx.core.view.allViews
@@ -29,6 +30,9 @@ class TextKeyboard(
 
     companion object {
         const val Name = "Text"
+
+        /** Google Pinyin: double tap = touch down within 300ms after the previous release */
+        private const val SHIFT_DOUBLE_TAP_TIMEOUT = 300L
 
         val Layout: List<List<KeyDef>> = listOf(
             listOf(
@@ -95,6 +99,72 @@ class TextKeyboard(
     init {
         updateLangSwitchKey(showLangSwitchKey.getValue())
         showLangSwitchKey.registerOnChangeListener(showLangSwitchKeyListener)
+        setupGooglePinyinShift()
+    }
+
+    /* ========== Google Pinyin shift ========== */
+
+    private var shiftHeld = false
+    private var typedWhileShiftHeld = false
+    private var capsAtShiftDown = CapsState.None
+    private var lockedOnShiftDown = false
+    private var shiftDownWhileComposing = false
+    private var lastShiftUpTime = 0L
+
+    /**
+     * Shift acts on touch down like Google Pinyin: off -> shifted at once, letters typed while
+     * holding shift are upper case and shift turns off when released (chording), a second tap
+     * within 300ms locks it on touch down, a tap while shifted or locked turns it off.
+     * While composing, shift is the syllable separator (see [onAction]).
+     */
+    private fun setupGooglePinyinShift() {
+        caps.doubleTapEnabled = false
+        val old = caps.onGestureListener ?: CustomGestureView.OnGestureListener.Empty
+        caps.onGestureListener = CustomGestureView.OnGestureListener { view, event ->
+            when (event.type) {
+                CustomGestureView.GestureType.Down -> onShiftDown()
+                CustomGestureView.GestureType.Up -> onShiftUp()
+                else -> {}
+            }
+            old.onGesture(view, event)
+        }
+    }
+
+    private fun setCapsState(state: CapsState) {
+        if (capsState == state) return
+        capsState = state
+        updateCapsButtonIcon()
+        updateAlphabetKeys()
+    }
+
+    private fun onShiftDown() {
+        shiftDownWhileComposing = composing
+        if (composing) return
+        val now = SystemClock.uptimeMillis()
+        shiftHeld = true
+        typedWhileShiftHeld = false
+        lockedOnShiftDown = false
+        capsAtShiftDown = capsState
+        if (capsState == CapsState.Once && now - lastShiftUpTime <= SHIFT_DOUBLE_TAP_TIMEOUT) {
+            setCapsState(CapsState.Lock)
+            lockedOnShiftDown = true
+        } else if (capsState == CapsState.None) {
+            setCapsState(CapsState.Once)
+        }
+    }
+
+    private fun onShiftUp() {
+        if (shiftDownWhileComposing) return
+        shiftHeld = false
+        lastShiftUpTime = SystemClock.uptimeMillis()
+        when {
+            lockedOnShiftDown -> {}
+            // locked by long press during this touch
+            capsState == CapsState.Lock && capsAtShiftDown != CapsState.Lock -> {}
+            typedWhileShiftHeld -> setCapsState(CapsState.None)
+            capsAtShiftDown == CapsState.None -> {}
+            else -> setCapsState(CapsState.None)
+        }
     }
 
     private val textKeys: List<TextKeyView> by lazy {
@@ -127,7 +197,8 @@ class TextKeyboard(
                                 act = action.act.uppercase(),
                                 states = KeyStates(KeyState.Virtual, KeyState.Shift)
                             )
-                            switchCapsState()
+                            // chording: stay shifted while shift is held
+                            if (shiftHeld) typedWhileShiftHeld = true else switchCapsState()
                         }
                         CapsState.Lock -> {
                             transformed = action.copy(
@@ -144,11 +215,14 @@ class TextKeyboard(
                 }
             }
             is KeyAction.CapsAction -> {
-                if (composing) {
+                if (shiftDownWhileComposing || composing) {
                     // Google Pinyin: while composing, shift is the syllable separator
                     transformed = KeyAction.FcitxKeyAction("'")
                 } else {
-                    switchCapsState(action.lock)
+                    // tap and double tap are handled on touch down/up, see setupGooglePinyinShift;
+                    // long press from off locks
+                    if (action.lock && capsAtShiftDown == CapsState.None) setCapsState(CapsState.Lock)
+                    return
                 }
             }
             else -> {}
@@ -168,6 +242,7 @@ class TextKeyboard(
     }
 
     override fun onAttach() {
+        shiftHeld = false
         capsState = CapsState.None
         updateCapsButtonIcon()
         updateAlphabetKeys()
