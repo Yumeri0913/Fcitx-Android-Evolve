@@ -598,6 +598,13 @@ abstract class BaseKeyboard(
         // do nothing by default
     }
 
+    /**
+     * Whether there is text being composed (e.g. pinyin typed but not committed yet)
+     */
+    open fun onPreeditEmptyStateUpdate(empty: Boolean) {
+        // do nothing by default
+    }
+
     open fun onDetach() {
         releaseAllTouchTargets()
     }

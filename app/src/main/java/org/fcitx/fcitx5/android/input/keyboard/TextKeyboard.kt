@@ -143,10 +143,28 @@ class TextKeyboard(
                     }
                 }
             }
-            is KeyAction.CapsAction -> switchCapsState(action.lock)
+            is KeyAction.CapsAction -> {
+                if (composing) {
+                    // Google Pinyin: while composing, shift is the syllable separator
+                    transformed = KeyAction.FcitxKeyAction("'")
+                } else {
+                    switchCapsState(action.lock)
+                }
+            }
             else -> {}
         }
         super.onAction(transformed, source)
+    }
+
+    /**
+     * Whether pinyin (or other text) is being composed
+     */
+    private var composing = false
+
+    override fun onPreeditEmptyStateUpdate(empty: Boolean) {
+        if (composing == !empty) return
+        composing = !empty
+        updateCapsButtonIcon()
     }
 
     override fun onAttach() {
@@ -221,7 +239,7 @@ class TextKeyboard(
 
     private fun updateCapsButtonIcon() {
         caps.img.apply {
-            imageResource = when (capsState) {
+            imageResource = if (composing) R.drawable.ic_pinyin_separator else when (capsState) {
                 CapsState.None -> R.drawable.ic_capslock_none
                 CapsState.Once -> R.drawable.ic_capslock_once
                 CapsState.Lock -> R.drawable.ic_capslock_lock

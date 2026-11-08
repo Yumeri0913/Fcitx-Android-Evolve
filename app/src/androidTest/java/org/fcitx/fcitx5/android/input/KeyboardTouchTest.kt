@@ -183,4 +183,26 @@ class KeyboardTouchTest {
         tap(keyboard.width - 2f, l.exactCenterY())
         assertEquals(listOf("a", "l"), typed())
     }
+
+    private fun viewRect(id: Int): Rect {
+        val v = keyboard.findViewById<View>(id)
+        val row = v.parent as View
+        return Rect(row.left + v.left, row.top + v.top, row.left + v.right, row.top + v.bottom)
+    }
+
+    @Test
+    fun shiftTypesSeparatorWhileComposing() {
+        val caps = viewRect(org.fcitx.fcitx5.android.R.id.button_caps)
+        instrumentation.runOnMainSync { keyboard.onPreeditEmptyStateUpdate(false) }
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        assertEquals(listOf("'"), typed())
+        // not composing: shift is shift again, the next letter is upper case
+        instrumentation.runOnMainSync { keyboard.onPreeditEmptyStateUpdate(true) }
+        actions.clear()
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        val g = keyRect('g')
+        Thread.sleep(400) // avoid the shift double tap window
+        tap(g.exactCenterX(), g.exactCenterY())
+        assertEquals(listOf("G"), typed())
+    }
 }

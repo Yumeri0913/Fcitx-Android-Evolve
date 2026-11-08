@@ -113,7 +113,15 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             it.onAttach()
             it.onReturnDrawableUpdate(returnKeyDrawable.resourceId)
             it.onInputMethodUpdate(fcitx.runImmediately { inputMethodEntryCached })
+            it.onPreeditEmptyStateUpdate(preeditEmpty)
         }
+    }
+
+    private var preeditEmpty = true
+
+    override fun onPreeditEmptyStateUpdate(empty: Boolean) {
+        preeditEmpty = empty
+        currentKeyboard?.onPreeditEmptyStateUpdate(empty)
     }
 
     fun switchLayout(to: String, remember: Boolean = true) {
