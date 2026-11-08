@@ -10,11 +10,15 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationCompat
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -26,6 +30,7 @@ import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.reloadPinyinDict
 import org.fcitx.fcitx5.android.data.pinyin.PinyinDictManager
 import org.fcitx.fcitx5.android.data.pinyin.dict.BuiltinDictionary
+import org.fcitx.fcitx5.android.data.pinyin.dict.GooglePinyinUserDict
 import org.fcitx.fcitx5.android.data.pinyin.dict.LibIMEDictionary
 import org.fcitx.fcitx5.android.data.pinyin.dict.PinyinDictionary
 import org.fcitx.fcitx5.android.ui.common.BaseDynamicListUi
@@ -35,9 +40,11 @@ import org.fcitx.fcitx5.android.ui.main.MainViewModel
 import org.fcitx.fcitx5.android.ui.main.MainViewModel.ButtonMode
 import org.fcitx.fcitx5.android.utils.NaiveDustman
 import org.fcitx.fcitx5.android.utils.importErrorDialog
+import org.fcitx.fcitx5.android.utils.item
 import org.fcitx.fcitx5.android.utils.lazyRoute
 import org.fcitx.fcitx5.android.utils.notificationManager
 import org.fcitx.fcitx5.android.utils.queryFileName
+import org.fcitx.fcitx5.android.utils.toast
 import java.util.concurrent.atomic.AtomicBoolean
 
 class PinyinDictionaryFragment : Fragment(), OnItemChangedListener<PinyinDictionary> {
@@ -47,6 +54,8 @@ class PinyinDictionaryFragment : Fragment(), OnItemChangedListener<PinyinDiction
     private val viewModel: MainViewModel by activityViewModels()
 
     private lateinit var launcher: ActivityResultLauncher<String>
+
+    private lateinit var googleExportLauncher: ActivityResultLauncher<String>
 
     private val dustman = NaiveDustman<Boolean>()
 
@@ -123,6 +132,40 @@ class PinyinDictionaryFragment : Fragment(), OnItemChangedListener<PinyinDiction
             viewLifecycleOwner,
             Lifecycle.State.STARTED
         )
+        requireActivity().addMenuProvider(
+            object : MenuProvider {
+                override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                    menu.item(R.string.import_google_pinyin_user_dict) {
+                        launcher.launch("*/*")
+                    }
+                    menu.item(R.string.export_google_pinyin_user_dict) {
+                        googleExportLauncher.launch(GooglePinyinUserDict.DEFAULT_FILE_NAME)
+                    }
+                }
+
+                override fun onMenuItemSelected(menuItem: MenuItem): Boolean = false
+            },
+            viewLifecycleOwner,
+            Lifecycle.State.STARTED
+        )
+    }
+
+    private fun exportGooglePinyinUserDict(uri: Uri) {
+        val ctx = requireContext()
+        lifecycleScope.launch {
+            try {
+                // flush user.dict to disk before reading it
+                viewModel.fcitx.runOnReady { save() }
+                val count = withContext(Dispatchers.IO) {
+                    val (bytes, count) = PinyinDictManager.exportGooglePinyinUserDict()
+                    ctx.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(bytes) }
+                    count
+                }
+                ctx.toast(getString(R.string.google_pinyin_dict_exported, count))
+            } catch (e: Exception) {
+                ctx.importErrorDialog(e)
+            }
+        }
     }
 
     private fun createNotificationChannel() {
@@ -141,6 +184,11 @@ class PinyinDictionaryFragment : Fragment(), OnItemChangedListener<PinyinDiction
             if (uri != null)
                 importFromUri(uri)
         }
+        googleExportLauncher =
+            registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+                if (uri != null)
+                    exportGooglePinyinUserDict(uri)
+            }
     }
 
     private fun importFromUri(uri: Uri) {
@@ -172,7 +220,10 @@ class PinyinDictionaryFragment : Fragment(), OnItemChangedListener<PinyinDiction
                     val inputStream = cr.openInputStream(uri)!!
                     PinyinDictManager.importFromInputStream(inputStream, fileName).getOrThrow()
                 }
-                ui.addItem(item = imported)
+                ui.addItem(item = imported.dictionary)
+                imported.googlePinyin?.let {
+                    ctx.toast(getString(R.string.google_pinyin_dict_imported, it.entries.size, it.skipped))
+                }
             } catch (e: Exception) {
                 ctx.importErrorDialog(e)
             }

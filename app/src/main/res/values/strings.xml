@@ -325,4 +325,9 @@
     <string name="clipboard_sync_start_pairing_summary">Broadcast this device on the local network until a client connects</string>
     <string name="clipboard_sync_pairing_started">Pairing mode started</string>
     <string name="toggle_chinese_english">Toggle Chinese/English</string>
+    <string name="import_google_pinyin_user_dict">Import Google Pinyin user dictionary</string>
+    <string name="export_google_pinyin_user_dict">Export as Google Pinyin user dictionary</string>
+    <string name="google_pinyin_dict_imported">Imported %1$d words from Google Pinyin, skipped %2$d lines</string>
+    <string name="google_pinyin_dict_exported">Exported %1$d words</string>
+    <string name="google_pinyin_dict_no_entry">No pinyin word found in this Google Pinyin user dictionary</string>
 </resources>

@@ -325,4 +325,9 @@
     <string name="clipboard_sync_start_pairing_summary">在局域网内广播本机，直到有客户端连接</string>
     <string name="clipboard_sync_pairing_started">已进入配对模式</string>
     <string name="toggle_chinese_english">切换中/英</string>
+    <string name="import_google_pinyin_user_dict">导入谷歌拼音用户词库</string>
+    <string name="export_google_pinyin_user_dict">导出为谷歌拼音用户词库</string>
+    <string name="google_pinyin_dict_imported">已从谷歌拼音导入 %1$d 个词，跳过 %2$d 行</string>
+    <string name="google_pinyin_dict_exported">已导出 %1$d 个词</string>
+    <string name="google_pinyin_dict_no_entry">该谷歌拼音用户词库中没有可用的拼音词条</string>
 </resources>
