@@ -1,0 +1,517 @@
+diff --git a/im/pinyin/englishuserwords.h b/im/pinyin/englishuserwords.h
+new file mode 100644
+index 0000000..f5c9351
+--- /dev/null
++++ b/im/pinyin/englishuserwords.h
+@@ -0,0 +1,198 @@
++/*
++ * SPDX-FileCopyrightText: 2026-2026 Fcitx5 for Android Contributors
++ *
++ * SPDX-License-Identifier: LGPL-2.1-or-later
++ *
++ */
++#ifndef _PINYIN_ENGLISHUSERWORDS_H_
++#define _PINYIN_ENGLISHUSERWORDS_H_
++
++#include <algorithm>
++#include <cstddef>
++#include <cstdint>
++#include <istream>
++#include <optional>
++#include <ostream>
++#include <string>
++#include <string_view>
++#include <unordered_map>
++#include <utility>
++#include <vector>
++
++namespace fcitx {
++
++// English words the user committed as raw input (Enter while composing). Like
++// Google Pinyin, they are learned and come back as candidates when typed again.
++// Words are matched case-insensitively and shown as last typed.
++class EnglishUserWords {
++public:
++    static constexpr size_t MaxWords = 5000;
++    static constexpr uint32_t MaxCount = 0xffff;
++
++    struct Lookup {
++        std::optional<std::string> exact;
++        std::vector<std::string> completions;
++    };
++
++    // Only plain words made of ASCII letters, as typed on the pinyin keyboard.
++    static bool isLearnable(std::string_view word) {
++        if (word.size() < 2 || word.size() > 64) {
++            return false;
++        }
++        return std::ranges::all_of(word, [](char c) {
++            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
++        });
++    }
++
++    static std::string normalize(std::string_view word) {
++        std::string key(word);
++        for (auto &c : key) {
++            if (c >= 'A' && c <= 'Z') {
++                c = static_cast<char>(c - 'A' + 'a');
++            }
++        }
++        return key;
++    }
++
++    void learn(std::string_view word) {
++        if (!isLearnable(word)) {
++            return;
++        }
++        auto &entry = words_[normalize(word)];
++        entry.word = word;
++        entry.count = std::min(entry.count + 1, MaxCount);
++        entry.stamp = ++clock_;
++        if (words_.size() > MaxWords) {
++            evictOldest();
++        }
++    }
++
++    // Undo one learn() of word, e.g. it was deleted right after commit.
++    void unlearn(std::string_view word) {
++        auto iter = words_.find(normalize(word));
++        if (iter == words_.end()) {
++            return;
++        }
++        if (iter->second.count <= 1) {
++            words_.erase(iter);
++        } else {
++            --iter->second.count;
++        }
++    }
++
++    void remove(std::string_view word) { words_.erase(normalize(word)); }
++
++    void clear() { words_.clear(); }
++
++    bool empty() const { return words_.empty(); }
++
++    // Learned word equal to input, and up to maxCompletions longer words
++    // starting with it, most used first.
++    Lookup lookup(std::string_view input, size_t maxCompletions) const {
++        Lookup result;
++        if (!isLearnable(input)) {
++            return result;
++        }
++        const auto key = normalize(input);
++        std::vector<const Entry *> completions;
++        for (const auto &[wordKey, entry] : words_) {
++            if (wordKey == key) {
++                result.exact = entry.word;
++            } else if (wordKey.size() > key.size() &&
++                       wordKey.starts_with(key)) {
++                completions.push_back(&entry);
++            }
++        }
++        std::ranges::sort(completions, [](const Entry *lhs, const Entry *rhs) {
++            if (lhs->count != rhs->count) {
++                return lhs->count > rhs->count;
++            }
++            return lhs->stamp > rhs->stamp;
++        });
++        for (const auto *entry : completions) {
++            if (result.completions.size() >= maxCompletions) {
++                break;
++            }
++            result.completions.push_back(entry->word);
++        }
++        return result;
++    }
++
++    // One word per line: word<TAB>count<TAB>stamp
++    void load(std::istream &in) {
++        words_.clear();
++        clock_ = 0;
++        std::string line;
++        while (std::getline(in, line)) {
++            auto tab1 = line.find('\t');
++            if (tab1 == std::string::npos) {
++                continue;
++            }
++            auto tab2 = line.find('\t', tab1 + 1);
++            std::string word = line.substr(0, tab1);
++            if (!isLearnable(word)) {
++                continue;
++            }
++            Entry entry;
++            entry.word = word;
++            try {
++                entry.count = static_cast<uint32_t>(std::stoul(line.substr(
++                    tab1 + 1, tab2 == std::string::npos ? std::string::npos
++                                                        : tab2 - tab1 - 1)));
++                if (tab2 != std::string::npos) {
++                    entry.stamp = std::stoull(line.substr(tab2 + 1));
++                }
++            } catch (...) {
++                continue;
++            }
++            if (entry.count == 0) {
++                continue;
++            }
++            entry.count = std::min(entry.count, MaxCount);
++            clock_ = std::max(clock_, entry.stamp);
++            words_[normalize(word)] = std::move(entry);
++        }
++        while (words_.size() > MaxWords) {
++            evictOldest();
++        }
++    }
++
++    void save(std::ostream &out) const {
++        std::vector<const Entry *> entries;
++        entries.reserve(words_.size());
++        for (const auto &[_, entry] : words_) {
++            entries.push_back(&entry);
++        }
++        std::ranges::sort(entries, [](const Entry *lhs, const Entry *rhs) {
++            return lhs->stamp < rhs->stamp;
++        });
++        for (const auto *entry : entries) {
++            out << entry->word << '\t' << entry->count << '\t' << entry->stamp
++                << '\n';
++        }
++    }
++
++private:
++    struct Entry {
++        std::string word;
++        uint32_t count = 0;
++        uint64_t stamp = 0;
++    };
++
++    void evictOldest() {
++        auto oldest = std::ranges::min_element(
++            words_, [](const auto &lhs, const auto &rhs) {
++                return lhs.second.stamp < rhs.second.stamp;
++            });
++        if (oldest != words_.end()) {
++            words_.erase(oldest);
++        }
++    }
++
++    std::unordered_map<std::string, Entry> words_;
++    uint64_t clock_ = 0;
++};
++
++} // namespace fcitx
++
++#endif // _PINYIN_ENGLISHUSERWORDS_H_
+diff --git a/im/pinyin/pinyin.cpp b/im/pinyin/pinyin.cpp
+index 7047c16..fa26fc0 100644
+--- a/im/pinyin/pinyin.cpp
++++ b/im/pinyin/pinyin.cpp
+@@ -532,8 +532,10 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
+     const auto &context = state->context_;
+     if (context.selected()) {
+         auto sentence = context.sentence();
++        state->undoLearnOnBackspace_ = false;
+         if (shouldLearn(inputContext)) {
+             state->context_.learn();
++            state->undoLearnOnBackspace_ = state->context_.canUndoLearn();
+         }
+         inputContext->commitString(sentence);
+         inputContext->updatePreedit();
+@@ -633,6 +635,40 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
+         }
+         /// }}}
+ 
++        /// Create learned English candidate {{{
++        if (selectedLength <= context.cursor() &&
++            EnglishUserWords::isLearnable(pyBeforeCursor) &&
++            !englishWords_.empty()) {
++            auto [rawPy, rawPyCursor] = state->context_.preeditWithCursor(
++                libime::PinyinPreeditMode::RawText);
++            if (rawPyCursor >= selectedSentence.size()) {
++                rawPy = rawPy.substr(selectedSentence.size(),
++                                     rawPyCursor - selectedSentence.size());
++            }
++            auto [hasUpper, engNess] =
++                englishNess(rawPy, context.useShuangpin());
++            // Typed like English: right after the first candidate, or first
++            // with a capital letter. Typed like pinyin: keep the top
++            // pinyin candidates first.
++            size_t position = engNess ? (hasUpper ? 0 : 1) : 3;
++            auto learned = englishWords_.lookup(pyBeforeCursor, 2);
++            if (learned.exact) {
++                learned.completions.insert(learned.completions.begin(),
++                                           std::move(*learned.exact));
++            }
++            for (auto &word : learned.completions) {
++                if (customCandidateMap.contains(word)) {
++                    continue;
++                }
++                customCandidateMap.emplace(
++                    word,
++                    std::make_unique<LearnedEnglishCandidateWord>(
++                        this, word, pyBeforeCursor.size(),
++                        CandidateOrder{position++, customCandidateMap.size()}));
++            }
++        }
++        /// }}}
++
+         /// Create spell candidate {{{
+         auto [parsedPy, parsedPyCursor] = state->context_.preeditWithCursor(
+             libime::PinyinPreeditMode::RawText);
+@@ -938,6 +974,22 @@ PinyinEngine::PinyinEngine(Instance *instance)
+         }
+     } while (0);
+ 
++    do {
++        auto file =
++            standardPath.open(StandardPathsType::PkgData, "pinyin/user.english",
++                              StandardPathsMode::User);
++        if (!file.isValid()) {
++            break;
++        }
++        try {
++            IFDStreamBuf buffer(file.fd());
++            std::istream in(&buffer);
++            englishWords_.load(in);
++        } catch (const std::exception &e) {
++            PINYIN_ERROR() << "Failed to load English user words: " << e.what();
++        }
++    } while (0);
++
+     ime_->setScoreFilter(1);
+     loadBuiltInDict();
+     reloadConfig();
+@@ -1735,6 +1787,29 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
+     updateUI(inputContext);
+ }
+ 
++void PinyinEngine::learnEnglishWord(InputContext *inputContext,
++                                    const std::string &word) {
++    auto *state = inputContext->propertyFor(&factory_);
++    state->undoEnglishWord_.clear();
++    if (!shouldLearn(inputContext) || !EnglishUserWords::isLearnable(word)) {
++        return;
++    }
++    englishWords_.learn(word);
++    state->undoEnglishWord_ = word;
++}
++
++void PinyinEngine::forgetEnglishWord(InputContext *inputContext,
++                                     const std::string &word) {
++    auto *state = inputContext->propertyFor(&factory_);
++    englishWords_.remove(word);
++
++    const std::string currentInput = state->context_.userInput();
++    resetForgetCandidate(inputContext);
++    doReset(inputContext);
++    state->context_.type(currentInput);
++    updateUI(inputContext);
++}
++
+ void PinyinEngine::saveCustomPhrase() {
+     instance_->eventDispatcher().scheduleWithContext(watch(), [this]() {
+         StandardPaths::global().safeSave(
+@@ -2098,6 +2173,22 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+         return;
+     }
+ 
++    if (state->undoLearnOnBackspace_) {
++        state->undoLearnOnBackspace_ = false;
++        if (event.key().check(FcitxKey_BackSpace) && state->context_.empty()) {
++            PINYIN_DEBUG() << "Undo learning of the last commit";
++            state->context_.undoLearn();
++        }
++    }
++    if (!state->undoEnglishWord_.empty()) {
++        auto word = std::move(state->undoEnglishWord_);
++        state->undoEnglishWord_.clear();
++        if (event.key().check(FcitxKey_BackSpace) && state->context_.empty()) {
++            PINYIN_DEBUG() << "Undo learning of English word " << word;
++            englishWords_.unlearn(word);
++        }
++    }
++
+     // Small hack to debug tabbed candidate on desktop.
+ #if 0
+     KeyList list;
+@@ -2319,6 +2410,9 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+             event.filterAndAccept();
+         } else if (event.key().checkKeyList(*config_.commitRawInput)) {
+             inputContext->commitString(preeditCommitString(inputContext));
++            learnEnglishWord(inputContext,
++                             state->context_.userInput().substr(
++                                 state->context_.selectedLength()));
+             state->context_.clear();
+             state->context_.clearContextWords();
+             event.filterAndAccept();
+@@ -2408,9 +2502,11 @@ void PinyinEngine::setSubConfig(const std::string &path,
+         loadExtraDict();
+     } else if (path == "clearuserdict") {
+         ime_->dict()->clear(libime::PinyinDictionary::UserDict);
++        englishWords_.clear();
+     } else if (path == "clearalldict") {
+         ime_->dict()->clear(libime::PinyinDictionary::UserDict);
+         ime_->model()->history().clear();
++        englishWords_.clear();
+     } else if (path == "customphrase") {
+         loadCustomPhrase();
+     }
+@@ -2429,6 +2525,8 @@ void PinyinEngine::doReset(InputContext *inputContext) const {
+     state->context_.clear();
+     state->context_.clearContextWords();
+     state->predictWords_.reset();
++    state->undoLearnOnBackspace_ = false;
++    state->undoEnglishWord_.clear();
+     inputContext->inputPanel().reset();
+     inputContext->updatePreedit();
+     inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
+@@ -2467,6 +2565,13 @@ void PinyinEngine::save() {
+                 return false;
+             }
+         });
++    standardPath.safeSave(StandardPathsType::PkgData, "pinyin/user.english",
++                          [this](int fd) {
++                              OFDStreamBuf buffer(fd);
++                              std::ostream out(&buffer);
++                              englishWords_.save(out);
++                              return static_cast<bool>(out);
++                          });
+ }
+ 
+ std::string PinyinEngine::subMode(const InputMethodEntry &entry,
+diff --git a/im/pinyin/pinyin.h b/im/pinyin/pinyin.h
+index d96fc1c..e8b93a8 100644
+--- a/im/pinyin/pinyin.h
++++ b/im/pinyin/pinyin.h
+@@ -8,6 +8,7 @@
+ #define _PINYIN_PINYIN_H_
+ 
+ #include "customphrase.h"
++#include "englishuserwords.h"
+ #include "symboldictionary.h"
+ #include "workerthread.h"
+ #include <cstddef>
+@@ -394,6 +395,14 @@ public:
+     int keyReleased_ = -1;
+     int keyReleasedIndex_ = -2;
+     uint64_t lastKeyPressedTime_ = 0;
++
++    // A sentence was just committed and learned; a BackSpace as the very next
++    // key undoes that learning, like the user rejected the commit.
++    bool undoLearnOnBackspace_ = false;
++
++    // An English word was just committed and learned; a BackSpace as the very
++    // next key undoes it.
++    std::string undoEnglishWord_;
+ };
+ 
+ class PinyinEngine final : public InputMethodEngineV3,
+@@ -446,6 +455,8 @@ public:
+                          const std::string &customPhrase);
+     void deleteCustomPhrase(InputContext *inputContext,
+                             const std::string &customPhrase);
++    void learnEnglishWord(InputContext *inputContext, const std::string &word);
++    void forgetEnglishWord(InputContext *inputContext, const std::string &word);
+ 
+     FCITX_ADDON_DEPENDENCY_LOADER(cloudpinyin, instance_->addonManager());
+     FCITX_ADDON_DEPENDENCY_LOADER(pinyinhelper, instance_->addonManager());
+@@ -515,6 +526,7 @@ private:
+     std::unique_ptr<EventSource> deferredPreload_;
+     std::unique_ptr<HandlerTableEntry<EventHandler>> event_;
+     CustomPhraseDict customPhrase_;
++    EnglishUserWords englishWords_;
+     SymbolDict symbols_;
+     WorkerThread worker_;
+     std::list<std::unique_ptr<TaskToken>> persistentTask_;
+diff --git a/im/pinyin/pinyincandidate.cpp b/im/pinyin/pinyincandidate.cpp
+index b1f48ed..7d9908b 100644
+--- a/im/pinyin/pinyincandidate.cpp
++++ b/im/pinyin/pinyincandidate.cpp
+@@ -299,6 +299,22 @@ void SpellCandidateWord::select(InputContext *inputContext) const {
+     engine_->updateUI(inputContext);
+ }
+ 
++LearnedEnglishCandidateWord::LearnedEnglishCandidateWord(PinyinEngine *engine,
++                                                         std::string word,
++                                                         size_t inputLength,
++                                                         CandidateOrder order)
++    : SpellCandidateWord(engine, word, inputLength, order), engine_(engine),
++      word_(std::move(word)) {}
++
++void LearnedEnglishCandidateWord::select(InputContext *inputContext) const {
++    auto *state = inputContext->propertyFor(&engine_->factory());
++    SpellCandidateWord::select(inputContext);
++    engine_->learnEnglishWord(inputContext, word_);
++    if (!state->context_.empty()) {
++        state->undoEnglishWord_.clear();
++    }
++}
++
+ PinyinCandidateWord::PinyinCandidateWord(PinyinEngine *engine,
+                                          InputContext *inputContext, Text text,
+                                          size_t selectLength, size_t idx,
+@@ -406,14 +422,14 @@ PinyinActionableCandidateList::PinyinActionableCandidateList(
+ 
+ bool PinyinActionableCandidateList::hasAction(
+     const CandidateWord &candidate) const {
+-    return isPinyinCandidate(candidate) ||
++    return isPinyinCandidate(candidate) || isLearnedEnglish(candidate) ||
+            canBeInsertedAsCustomPhrase(candidate);
+ }
+ 
+ std::vector<CandidateAction> PinyinActionableCandidateList::candidateActions(
+     const CandidateWord &candidate) const {
+     std::vector<CandidateAction> result;
+-    if (isPinyinCandidate(candidate)) {
++    if (isPinyinCandidate(candidate) || isLearnedEnglish(candidate)) {
+         CandidateAction action;
+         action.setId(PINYIN_FORGET);
+         action.setText(_("Forget candidate"));
+@@ -448,6 +464,10 @@ void PinyinActionableCandidateList::triggerAction(
+                 dynamic_cast<const PinyinCandidateWord *>(&candidate)) {
+             engine_->forgetCandidate(inputContext_,
+                                      pinyinCandidate->candidateIndex());
++        } else if (const auto *englishCandidate =
++                       dynamic_cast<const LearnedEnglishCandidateWord *>(
++                           &candidate)) {
++            engine_->forgetEnglishWord(inputContext_, englishCandidate->word());
+         }
+     } break;
+     case PINYIN_CUSTOMPHRASE: {
+diff --git a/im/pinyin/pinyincandidate.h b/im/pinyin/pinyincandidate.h
+index 9e69c5c..4c0e5e5 100644
+--- a/im/pinyin/pinyincandidate.h
++++ b/im/pinyin/pinyincandidate.h
+@@ -195,6 +195,21 @@ private:
+     std::string word_;
+ };
+ 
++// An English word learned from raw input commits.
++class LearnedEnglishCandidateWord : public SpellCandidateWord {
++public:
++    LearnedEnglishCandidateWord(PinyinEngine *engine, std::string word,
++                                size_t inputLength, CandidateOrder order);
++
++    void select(InputContext *inputContext) const override;
++
++    const std::string &word() const { return word_; }
++
++private:
++    PinyinEngine *engine_;
++    std::string word_;
++};
++
+ class PinyinCandidateWord : public PinyinAbstractCandidateWord,
+                             public InsertableAsCustomPhraseInterface,
+                             public PinyinCandidateIndexInterface {
+@@ -268,6 +283,10 @@ private:
+         return dynamic_cast<const PinyinCandidateWord *>(&candidate);
+     }
+ 
++    static bool isLearnedEnglish(const CandidateWord &candidate) {
++        return dynamic_cast<const LearnedEnglishCandidateWord *>(&candidate);
++    }
++
+     static bool canBeInsertedAsCustomPhrase(const CandidateWord &candidate) {
+         if (const auto *insertable =
+                 dynamic_cast<const InsertableAsCustomPhraseInterface *>(

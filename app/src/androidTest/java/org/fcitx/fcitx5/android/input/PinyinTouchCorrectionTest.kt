@@ -35,7 +35,8 @@ import java.io.File
 /**
  * Pinyin engine behavior added for Google Pinyin like typing:
  * keyboard correction priced by touch position (including vertical neighbors),
- * and undoing what was learned from a commit when BackSpace follows it.
+ * undoing what was learned from a commit when BackSpace follows it,
+ * and learning English words committed as raw input with Return.
  */
 class PinyinTouchCorrectionTest {
 
@@ -44,6 +45,7 @@ class PinyinTouchCorrectionTest {
         val pinyinDir get() = File(context.getExternalFilesDir(null)!!, "data/pinyin").also { it.mkdirs() }
         val userDict get() = File(pinyinDir, "user.dict")
         val userHistory get() = File(pinyinDir, "user.history")
+        val userEnglish get() = File(pinyinDir, "user.english")
 
         lateinit var fcitx: Fcitx
         val events = Channel<FcitxEvent<*>>(capacity = Channel.UNLIMITED)
@@ -53,9 +55,10 @@ class PinyinTouchCorrectionTest {
         @BeforeClass
         @JvmStatic
         fun setup() {
-            listOf(userDict, userHistory).forEach { backups[it] = it.takeIf { f -> f.exists() }?.readBytes() }
-            userDict.delete()
-            userHistory.delete()
+            listOf(userDict, userHistory, userEnglish).forEach {
+                backups[it] = it.takeIf { f -> f.exists() }?.readBytes()
+                it.delete()
+            }
             fcitx = Fcitx(context)
             fcitx.eventFlow.onEach { events.send(it) }.launchIn(scope)
             fcitx.start()
@@ -171,6 +174,44 @@ class PinyinTouchCorrectionTest {
         fcitx.sendKey(FcitxKeyMapping.FcitxKey_BackSpace, KeyStates.Virtual.states)
         delay(150)
         assertTrue("洮貔" in learnedWords())
+        fcitx.reset()
+    }
+
+    private suspend fun commitRaw(input: String) {
+        fcitx.reset()
+        while (events.tryReceive().isSuccess) { /* drop stale events */ }
+        input.forEach { key(it) }
+        delay(100)
+        fcitx.sendKey(FcitxKeyMapping.FcitxKey_Return, KeyStates.Virtual.states)
+        val commit = withTimeout(5_000) {
+            events.receiveAsFlow().filterIsInstance<FcitxEvent.CommitStringEvent>().first()
+        }
+        assertEquals(input, commit.data.text)
+    }
+
+    @Test
+    fun returnCommittedEnglishIsLearned(): Unit = runBlocking {
+        val word = "fcitxy"
+        assertFalse(word in typeWith(word, -1, null))
+
+        // rejected by BackSpace right after the commit
+        commitRaw(word)
+        fcitx.sendKey(FcitxKeyMapping.FcitxKey_BackSpace, KeyStates.Virtual.states)
+        delay(150)
+        assertFalse(word in typeWith(word, -1, null))
+
+        // kept once another key follows, offered right after the first candidate
+        commitRaw(word)
+        key('a')
+        fcitx.reset()
+        val again = typeWith(word, -1, null)
+        assertTrue(again.toString(), again.indexOf(word) in 0..1)
+        // and completed from a prefix
+        val prefix = typeWith("fcit", -1, null)
+        assertTrue(prefix.toString(), word in prefix.take(5))
+
+        fcitx.save()
+        assertTrue(userEnglish.readText(), userEnglish.readLines().any { it.startsWith("$word\t") })
         fcitx.reset()
     }
 }

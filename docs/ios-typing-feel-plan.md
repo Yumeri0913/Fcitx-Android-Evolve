@@ -9,7 +9,7 @@
 | 文件 | 作用 |
 | --- | --- |
 | `patches/libime/0001-google-pinyin-touch-correction-and-undo-learn.patch` | 按落点给纠错定价，纠错表加上下行邻键，撤销学习接口 |
-| `patches/fcitx5-chinese-addons/0001-undo-learning-on-backspace-after-commit.patch` | 上屏后紧接着退格，撤销这次学习 |
+| `patches/fcitx5-chinese-addons/0001-google-pinyin-learning.patch` | 上屏后紧接着退格撤销这次学习；回车上屏的英文加入自学习词库 |
 
 两个补丁基于安卓仓库当前固定的子模块版本：libime `ecd23795`，fcitx5-chinese-addons `19f06898`。fcitx5-ios 已经有 `patches/libime.patch`，需要把新补丁合进去，冲突时以功能为准手工调整。
 
