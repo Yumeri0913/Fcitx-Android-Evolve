@@ -74,6 +74,12 @@ sealed class InputWindow : Dependent {
             return null
         }
 
+        /**
+         * Whether this window shows a keyboard that composes text (e.g. emoji search), so the
+         * bar should show candidates over the title while composing
+         */
+        open val takesKeyboardInput: Boolean = false
+
         override val type: KClass<out IUniqueComponent<*>> by lazy { defaultType() }
 
         override fun equals(other: Any?): Boolean = defaultEquals(other)

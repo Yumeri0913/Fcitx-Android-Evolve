@@ -346,4 +346,6 @@
     <string name="keyboard_height_ratio">Keyboard height</string>
     <string name="quick_settings">Quick settings</string>
     <string name="quick_settings_entry">Google Pinyin style settings</string>
+    <string name="emoji_search_hint">Search emoji</string>
+    <string name="emoji_search_no_result">No matching emoji</string>
 </resources>

@@ -346,4 +346,6 @@
     <string name="keyboard_height_ratio">键盘高度</string>
     <string name="quick_settings">快捷设置</string>
     <string name="quick_settings_entry">谷歌拼音式设置</string>
+    <string name="emoji_search_hint">搜索表情符号</string>
+    <string name="emoji_search_no_result">没有找到相关表情</string>
 </resources>

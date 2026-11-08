@@ -8,7 +8,12 @@ import androidx.core.content.ContextCompat
 import androidx.transition.Transition
 import androidx.viewpager2.widget.ViewPager2
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.input.bar.ui.ToolButton
 import org.fcitx.fcitx5.android.input.broadcast.ReturnKeyDrawableComponent
+import org.fcitx.fcitx5.android.input.emoji.EmojiSearch
+import org.fcitx.fcitx5.android.input.emoji.EmojiSearchWindow
+import splitties.dimensions.dp
 import org.fcitx.fcitx5.android.input.dependency.theme
 import org.fcitx.fcitx5.android.input.keyboard.CommonKeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
@@ -143,7 +148,29 @@ class PickerWindow(
         }
     }
 
-    override fun onCreateBarExtension() = pickerLayout.tabsUi.root
+    /**
+     * Gboard style: search box entry at the start of the emoji category tabs.
+     * Created once, this window (and the tabs view) is reused across attaches.
+     */
+    private val emojiBarExtension by lazy {
+        android.widget.LinearLayout(context).apply {
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(ToolButton(context, R.drawable.ic_baseline_search_24, theme).apply {
+                contentDescription = context.getString(R.string.emoji_search_hint)
+                setOnClickListener { windowManager.attachWindow(EmojiSearchWindow()) }
+            }, android.widget.LinearLayout.LayoutParams(context.dp(40), context.dp(40)))
+            addView(
+                pickerLayout.tabsUi.root,
+                android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            )
+        }
+    }
+
+    override fun onCreateBarExtension(): android.view.View {
+        if (key != Key.Emoji) return pickerLayout.tabsUi.root
+        EmojiSearch.preload()
+        return emojiBarExtension
+    }
 
     override fun onAttached() {
         if (key == Key.Symbol) {

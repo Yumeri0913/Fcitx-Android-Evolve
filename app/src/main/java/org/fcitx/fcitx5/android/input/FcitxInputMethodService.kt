@@ -349,7 +349,45 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
     }
 
+    /**
+     * Receives typed text instead of the editor, e.g. the emoji search box.
+     */
+    interface TextSink {
+        fun commit(text: String)
+        fun deleteBackward()
+    }
+
+    /**
+     * When set, committed text and backspace go to this sink rather than the editor,
+     * and composing text is not shown inline in the editor.
+     */
+    var textSink: TextSink? = null
+        set(value) {
+            if (value != null && composing.isNotEmpty()) {
+                currentInputConnection?.finishComposingText()
+                resetComposingState()
+            }
+            field = value
+        }
+
+    /**
+     * Commit [text] to the editor even while a [textSink] is set.
+     */
+    fun commitTextToEditor(text: String) {
+        val sink = textSink
+        textSink = null
+        try {
+            commitText(text)
+        } finally {
+            textSink = sink
+        }
+    }
+
     private fun handleBackspaceKey() {
+        textSink?.let {
+            it.deleteBackward()
+            return
+        }
         val lastSelection = selection.latest
         if (lastSelection.isNotEmpty()) {
             selection.predict(lastSelection.start)
@@ -381,6 +419,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     private fun handleReturnKey() {
+        // enter in a text sink (e.g. emoji search) must not reach the editor
+        if (textSink != null) return
         currentInputEditorInfo.run {
             if (inputType and InputType.TYPE_MASK_CLASS == InputType.TYPE_NULL ||
                 imeOptions.hasFlag(EditorInfo.IME_FLAG_NO_ENTER_ACTION)
@@ -421,6 +461,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun commitText(text: String, cursor: Int = -1) {
+        textSink?.let {
+            if (text.isNotEmpty()) it.commit(text)
+            return
+        }
         val ic = currentInputConnection ?: return
         // when composing text equals commit content, finish composing text as-is
         if (composing.isNotEmpty() && composingText.toString() == text) {
@@ -920,6 +964,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     // because of https://android.googlesource.com/platform/frameworks/base.git/+/refs/tags/android-11.0.0_r45/core/java/android/view/inputmethod/BaseInputConnection.java#851
     // it's not possible to set cursor inside composing text
     private fun updateComposingText(text: FormattedText) {
+        // composing text belongs to the sink (its owner shows preedit itself)
+        if (textSink != null) return
         val ic = currentInputConnection ?: return
         val lastSelection = selection.latest
         ic.beginBatchEdit()

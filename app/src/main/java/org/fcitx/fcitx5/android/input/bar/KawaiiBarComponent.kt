@@ -383,12 +383,18 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         val index = state.ordinal
         if (view.displayedChild == index) return
         val new = view.getChildAt(index)
-        if (new != titleUi.root) {
-            titleUi.setReturnButtonOnClickListener { }
-            titleUi.setTitle("")
-            titleUi.removeExtension()
+        // a window with its own keyboard keeps its title (e.g. search box) under the candidates
+        val keepTitle = barStateMachine.getBooleanState(KawaiiBarStateMachine.BooleanKey.WindowTakesInput) == true
+        if (new != titleUi.root && !keepTitle) {
+            clearTitle()
         }
         view.displayedChild = index
+    }
+
+    private fun clearTitle() {
+        titleUi.setReturnButtonOnClickListener { }
+        titleUi.setTitle("")
+        titleUi.removeExtension()
     }
 
     override val view by lazy {
@@ -455,14 +461,21 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 titleUi.setReturnButtonOnClickListener {
                     windowManager.attachWindow(KeyboardWindow)
                 }
-                barStateMachine.push(ExtendedWindowAttached)
+                barStateMachine.push(
+                    ExtendedWindowAttached,
+                    KawaiiBarStateMachine.BooleanKey.WindowTakesInput to window.takesKeyboardInput
+                )
             }
             else -> {}
         }
     }
 
     override fun onWindowDetached(window: InputWindow) {
-        barStateMachine.push(WindowDetached)
+        // it may be detached while candidates cover its title, which then never gets cleared
+        if (window is InputWindow.ExtendedInputWindow<*> && window.takesKeyboardInput) {
+            clearTitle()
+        }
+        barStateMachine.push(WindowDetached, KawaiiBarStateMachine.BooleanKey.WindowTakesInput to false)
     }
 
     private val suggestionSize by lazy {

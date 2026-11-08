@@ -141,10 +141,36 @@ configurations {
     }
 }
 
+/**
+ * Copy fcitx5 emoji module's CLDR annotation data used by emoji search into assets/emoji
+ */
+abstract class CopyEmojiDataTask : DefaultTask() {
+    @get:InputFiles
+    abstract val dictionaries: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val output: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val dir = output.get().asFile.resolve("emoji").also { it.mkdirs() }
+        dictionaries.forEach { it.copyTo(dir.resolve(it.name), overwrite = true) }
+    }
+}
+
+val copyEmojiData by tasks.registering(CopyEmojiDataTask::class) {
+    dictionaries.from(
+        listOf("zh", "en").map {
+            rootProject.file("lib/fcitx5/src/main/cpp/fcitx5/src/modules/emoji/data/$it.dict")
+        }
+    )
+}
+
 androidComponents {
     onVariants { variant ->
         // resValues of build types reference resources that only exist in the app itself,
         // which breaks linking the instrumentation test APK since AGP 9
         variant.androidTest?.resValues?.empty()
+        variant.sources.assets?.addGeneratedSourceDirectory(copyEmojiData, CopyEmojiDataTask::output)
     }
 }
