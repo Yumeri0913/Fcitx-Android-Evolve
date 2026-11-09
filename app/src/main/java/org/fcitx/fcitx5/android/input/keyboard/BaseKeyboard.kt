@@ -41,6 +41,7 @@ import splitties.views.dsl.constraintlayout.rightOfParent
 import splitties.views.dsl.constraintlayout.rightToLeftOf
 import splitties.views.dsl.constraintlayout.topOfParent
 import splitties.views.dsl.core.add
+import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
@@ -156,6 +157,19 @@ abstract class BaseKeyboard(
         spaceSwipeMoveCursor.registerOnChangeListener(spaceSwipeChangeListener)
     }
 
+    /**
+     * A swipe is decided from where the finger is relative to
+     * where it went down, not how it moved on the way: vertical movement larger than the
+     * horizontal one and beyond the threshold. A finger rolling a little, or sliding back, types
+     * the key itself.
+     */
+    private fun swipeSymbolTriggered(view: CustomGestureView, x: Float, y: Float): Boolean {
+        val dx = x - view.touchDownX
+        val dy = y - view.touchDownY
+        return abs(dy) > abs(dx) && abs(dy) > inputSwipeThreshold &&
+                swipeSymbolDirection.checkY(if (dy > 0) 1 else -1)
+    }
+
     protected fun createKeyView(def: KeyDef): KeyView {
         return when (def.appearance) {
             is KeyDef.Appearance.AltText -> AltTextKeyView(context, theme, def.appearance)
@@ -260,7 +274,7 @@ abstract class BaseKeyboard(
                         onGestureListener = OnGestureListener { view, event ->
                             when (event.type) {
                                 GestureType.Up -> {
-                                    if (!event.consumed && swipeSymbolDirection.checkY(event.totalY)) {
+                                    if (!event.consumed && swipeSymbolTriggered(view as CustomGestureView, event.x, event.y)) {
                                         onAction(it.action)
                                         true
                                     } else {
@@ -339,7 +353,7 @@ abstract class BaseKeyboard(
                                         )
                                     }
                                     GestureType.Move -> {
-                                        val triggered = swipeSymbolDirection.checkY(event.totalY)
+                                        val triggered = swipeSymbolTriggered(view as CustomGestureView, event.x, event.y)
                                         val text = if (triggered) it.alternative else it.content
                                         onPopupAction(
                                             PopupAction.PreviewUpdateAction(view.id, text)

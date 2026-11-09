@@ -71,6 +71,12 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
     var swipeThresholdX = 24f
     var swipeThresholdY = 24f
 
+    /** Where the current touch went down, in view coordinates */
+    var touchDownX = 0f
+        private set
+    var touchDownY = 0f
+        private set
+
     private var swipeRepeatTriggered = false
     private var swipeLastX = -1f
     private var swipeLastY = -1f
@@ -226,6 +232,8 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                 swipeSuppressed = suppressSwipeForNextPress
                 suppressSwipeForNextPress = false
                 if (!isEnabled) return false
+                touchDownX = x
+                touchDownY = y
                 downTime = SystemClock.uptimeMillis()
                 drawableHotspotChanged(x, y)
                 isPressed = true

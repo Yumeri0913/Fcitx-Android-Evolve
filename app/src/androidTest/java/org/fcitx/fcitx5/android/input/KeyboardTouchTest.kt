@@ -206,6 +206,27 @@ class KeyboardTouchTest {
         assertEquals(listOf("G"), typed())
     }
 
+    @Test
+    fun swipeIsDecidedWhereTheFingerLifts() {
+        val g = keyRect('g')
+        // past the threshold on the way, but lifted only 10 dp below where it went down
+        down(0, g.exactCenterX(), g.exactCenterY())
+        move(0, g.exactCenterX(), g.exactCenterY() + 20 * density)
+        move(0, g.exactCenterX(), g.exactCenterY() + 10 * density)
+        up(0)
+        assertEquals(listOf("g"), typed())
+    }
+
+    @Test
+    fun mostlySidewaysDragIsNoSwipe() {
+        val g = keyRect('g')
+        // 17 dp down but 18 dp sideways: vertical has to dominate
+        down(0, g.exactCenterX(), g.exactCenterY())
+        move(0, g.exactCenterX() + 18 * density, g.exactCenterY() + 17 * density)
+        up(0)
+        assertEquals(listOf("g"), typed())
+    }
+
     private fun syms(sym: Int) = actions.count {
         it is KeyAction.SymAction && it.sym.sym == sym
     }
