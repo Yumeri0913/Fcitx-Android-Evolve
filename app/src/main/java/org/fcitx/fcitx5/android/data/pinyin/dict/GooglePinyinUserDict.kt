@@ -18,7 +18,9 @@ import java.nio.charset.CodingErrorAction
  * - UTF-16LE with BOM, `\n` line endings
  * - first line `# User dictionary for Google Pinyin Input`
  * - one entry per line: `word<TAB>count<TAB>pin yin[<TAB>tx=N]`
- * - English entries mark their tokens with a language marker, e.g. `hello\t3\t\\0 hello`
+ * - English entries mark their tokens with a language marker and spell the letters:
+ *   `Android\t449\t\\0 a n d r o i d`. Mixed entries switch languages in the middle,
+ *   e.g. `app里\t1\t\\0 a p p \\16 li`, and are not supported.
  *
  * Google Pinyin's importer is lenient: BOM decides the charset (GBK without BOM), lines
  * starting with `#` or `;` are comments, fields are separated by TAB (or a single space when
@@ -43,10 +45,21 @@ object GooglePinyinUserDict {
         val googlePinyin: String get() = syllables.joinToString(" ")
     }
 
+    /** An English word, typed letter by letter */
+    data class EnglishEntry(val word: String, val count: Int = 1)
+
+    /**
+     * What was typed for a word and how often, abbreviations and mixed words included,
+     * e.g. `xg` -> 香港, `bangm` -> 帮忙, `appli` -> app里. Letters only, lowercase.
+     */
+    data class TypedEntry(val code: String, val word: String, val count: Int)
+
     data class ParseResult(
         val entries: List<Entry>,
-        /** non-comment lines that could not be converted (English words, invalid pinyin...) */
-        val skipped: Int
+        /** non-comment lines that could not be converted (mixed words, invalid pinyin...) */
+        val skipped: Int,
+        val english: List<EnglishEntry> = emptyList(),
+        val typed: List<TypedEntry> = emptyList()
     )
 
     /**
@@ -84,6 +97,7 @@ object GooglePinyinUserDict {
     private val countRegex = Regex("^[0-9]+,?$")
     private val englishRegex = Regex("^[A-Za-z]+(?:[-'][A-Za-z]+)*$")
     private val languageMarkerRegex = Regex("\\\\[0-9]+")
+    private val englishCodeRegex = Regex("^\\\\0((?: [a-z])+)$")
     private val syllableSeparator = Regex("[ '|]+")
 
     private fun ByteArray.startsWith(prefix: ByteArray): Boolean =
@@ -165,10 +179,28 @@ object GooglePinyinUserDict {
     /** Parse a Google Pinyin user dictionary (already decoded) */
     fun parse(text: String): ParseResult {
         val merged = LinkedHashMap<Pair<String, String>, Entry>()
+        // by lowercase word, Google Pinyin may keep several spellings of one word
+        val english = LinkedHashMap<String, EnglishEntry>()
+        val typed = LinkedHashMap<Pair<String, String>, TypedEntry>()
         var skipped = 0
         text.lineSequence().forEach { raw ->
             val line = raw.trim('\uFEFF', '\r', '\n')
             if (line.isBlank() || line.startsWith("#") || line.startsWith(";")) return@forEach
+            parseTypedLine(line)?.let {
+                val key = it.code to it.word
+                val old = typed[key]
+                typed[key] = if (old == null) it else old.copy(count = old.count + it.count)
+            }
+            parseEnglishLine(line)?.let {
+                val key = it.word.lowercase()
+                val old = english[key]
+                english[key] = when {
+                    old == null -> it
+                    it.count > old.count -> it.copy(count = it.count + old.count)
+                    else -> old.copy(count = old.count + it.count)
+                }
+                return@forEach
+            }
             val entry = parseLine(line)
             if (entry == null) {
                 skipped++
@@ -178,7 +210,54 @@ object GooglePinyinUserDict {
             val old = merged[key]
             merged[key] = if (old == null) entry else old.copy(count = maxOf(old.count, entry.count))
         }
-        return ParseResult(merged.values.toList(), skipped)
+        return ParseResult(
+            merged.values.toList(), skipped, english.values.toList(), typed.values.toList()
+        )
+    }
+
+    private val codeTokenRegex = Regex("^(?:[a-z\u00fc]+|\\\\0|\\\\16)$")
+
+    /**
+     * The typed letters of any entry that was used: pinyin (full or abbreviated), English
+     * (`\\0` marker) or both (`\\16` switches back to pinyin). Digits are left out.
+     */
+    private fun parseTypedLine(line: String): TypedEntry? {
+        val fields = splitFields(line).take(3).map { it.trim() }
+        val count = fields.firstOrNull { countRegex.matches(it) }
+            ?.trimEnd(',')?.toIntOrNull() ?: return null
+        if (count <= 0) return null
+        fun isCode(f: String) = f.isNotEmpty() && !countRegex.matches(f) &&
+                f.split(' ').all { codeTokenRegex.matches(it) } && f.any { it in 'a'..'z' }
+        // an English word looks like a code too: prefer the one with a language marker, then the
+        // last one, which is where Google Pinyin writes it
+        val codeIndex = fields.indices.lastOrNull { isCode(fields[it]) && '\\' in fields[it] }
+            ?: fields.indices.lastOrNull { isCode(fields[it]) }
+            ?: return null
+        val code = fields[codeIndex].split(' ')
+            .filterNot { it.startsWith('\\') }
+            .joinToString("") { normalizeSyllable(it) }
+        val word = fields.filterIndexed { i, f ->
+            i != codeIndex && f.isNotEmpty() && !countRegex.matches(f)
+        }.firstOrNull() ?: return null
+        if ('\t' in word || code.isEmpty()) return null
+        // single letters (mostly typed in English mode) would push away pinyin abbreviations
+        if (word.length == 1 && word[0].lowercaseChar() in 'a'..'z') return null
+        return TypedEntry(code, word, count)
+    }
+
+    /**
+     * An English word of at least two letters, the same as fcitx pinyin learns from raw input.
+     * Single letters are left out, as they are typed as raw input anyway.
+     */
+    private fun parseEnglishLine(line: String): EnglishEntry? {
+        val fields = splitFields(line).map { it.trim() }
+        val code = fields.firstNotNullOfOrNull { englishCodeRegex.matchEntire(it) } ?: return null
+        val letters = code.groupValues[1].replace(" ", "")
+        val word = fields.firstOrNull { it.equals(letters, ignoreCase = true) } ?: return null
+        if (word.length < 2) return null
+        val count = fields.firstOrNull { countRegex.matches(it) }
+            ?.trimEnd(',')?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        return EnglishEntry(word, count)
     }
 
     fun parse(bytes: ByteArray): ParseResult = parse(decode(bytes))
@@ -214,13 +293,23 @@ object GooglePinyinUserDict {
     }
 
     /** Serialize entries to Google Pinyin user dictionary bytes (UTF-16LE with BOM) */
-    fun toGooglePinyinBytes(entries: List<Entry>): ByteArray {
+    fun toGooglePinyinBytes(
+        entries: List<Entry>,
+        english: List<EnglishEntry> = emptyList()
+    ): ByteArray {
         val text = buildString {
             append(HEADER).append('\n')
             entries.forEach {
                 append(it.word).append('\t')
                     .append(it.count.coerceAtLeast(1)).append('\t')
                     .append(it.googlePinyin).append('\n')
+            }
+            english.forEach {
+                append(it.word).append('\t')
+                    .append(it.count.coerceAtLeast(1)).append('\t')
+                    .append("\\0")
+                it.word.lowercase().forEach { c -> append(' ').append(c) }
+                append('\n')
             }
         }
         return BOM_UTF16LE + text.toByteArray(Charsets.UTF_16LE)

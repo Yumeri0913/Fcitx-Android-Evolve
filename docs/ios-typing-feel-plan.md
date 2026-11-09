@@ -77,3 +77,18 @@ libime::PinyinContext::setPendingKeyAlternatives({});             // 清空，�
   - 输入 nihai，落点在 i、o 交界时「你好」排前三，落点在 i 中心时排不上来。
   - 上屏后立即退格撤销学习，中间按过别的键则保留学习结果。
 - `KeyboardTouchTest`：滑出改键、竖向滑动出符号、双指顺序、两端触摸区、落点概率的取值。
+
+## 5. 按谷歌拼音词库对齐候选顺序（2026-11-09）
+
+谷歌拼音的用户词库按「打的编码 → 选的词 → 次数」记录，例如 `xg → 香港 ×907`、`bang m → 帮忙`。拼音插件新增一张同样的表 `pinyin/user.typed`（`typedcodehistory.h`），已合进 `patches/fcitx5-chinese-addons/0001-google-pinyin-learning.patch`：
+
+- 导入谷歌词库时，所有条目都写进这张表，包括缩写、中英混合（`app里`）和英文。只有单个字母的英文不写，它们多半是在英文模式下打的。
+- 每次上屏都给「打的编码 → 上屏的词」加一次。经过纠错的上屏不记在打错的编码下。
+- 完整输入命中表里的编码时，表里的词按次数排在最前，中英文一起排。
+- 某个键有落点邻键时，把它换成邻键，查表里的词，用 `log10(次数) − 落点代价` 和精确匹配的词一起排序。分数低于 1 的不出。
+- 表情候选放到前 5 个词之后；英文拼写提示要输入满 4 个字母才出现。
+- 学过的英文也按落点纠错。
+
+iOS 已经移植：主 App 解析出 `.typed` 和 `.english`，与 `import-<UUID>.tsv` 同名放置，键盘合并词库时一并处理。
+
+调参用 `scripts/google-pinyin-benchmark.py` 和设备端的 `CandidateDumpBenchmark`。用法见脚本开头的说明。

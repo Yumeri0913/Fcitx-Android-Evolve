@@ -84,6 +84,67 @@ class GooglePinyinUserDictTest {
     }
 
     @Test
+    fun parsesEnglishWords() {
+        val result = GooglePinyinUserDict.parse(
+            googleExport(
+                "Android\t449\t\\0 a n d r o i d",
+                "pro\t703\t\\0 p r o",
+                "Pro\t10\t\\0 p r o",      // spellings of one word add up, the most used wins
+                "G\t2095\t\\0 g",          // single letters are raw input anyway
+                "app里\t1\t\\0 a p p \\16 li", // mixed entries are not supported
+                "你好\t2\tni hao",
+            )
+        )
+        assertEquals(listOf(Entry("你好", listOf("ni", "hao"), 2)), result.entries)
+        assertEquals(
+            listOf(
+                GooglePinyinUserDict.EnglishEntry("Android", 449),
+                GooglePinyinUserDict.EnglishEntry("pro", 713)
+            ),
+            result.english
+        )
+        assertEquals(2, result.skipped)
+        // and written back the same way
+        val written = GooglePinyinUserDict.parse(
+            GooglePinyinUserDict.toGooglePinyinBytes(result.entries, result.english)
+        )
+        assertEquals(result.english, written.english)
+        assertTrue(
+            String(GooglePinyinUserDict.toGooglePinyinBytes(emptyList(), result.english), Charsets.UTF_16LE)
+                .contains("Android\t449\t\\0 a n d r o i d\n")
+        )
+    }
+
+    @Test
+    fun recordsWhatWasTypedForEveryWord() {
+        val result = GooglePinyinUserDict.parse(
+            googleExport(
+                "香港\t907\txg",
+                "帮忙\t7\tbang m",
+                "绑定了\t5\tbang ding le",
+                "app里\t1\t\\0 a p p \\16 li",
+                "Android\t449\t\\0 a n d r o i d",
+                "103\t2\t\\300 1 0 3",   // digits are not typed on the pinyin keyboard
+                "堡\t0\tbao",              // never used
+                "香港\t3\txg",
+                "x\t989\t\\0 x",             // single letters stay raw input
+                "pro\t703\t\\0 p r o",
+            )
+        )
+        assertEquals(
+            listOf(
+                GooglePinyinUserDict.TypedEntry("xg", "香港", 910),
+                GooglePinyinUserDict.TypedEntry("bangm", "帮忙", 7),
+                GooglePinyinUserDict.TypedEntry("bangdingle", "绑定了", 5),
+                GooglePinyinUserDict.TypedEntry("appli", "app里", 1),
+                GooglePinyinUserDict.TypedEntry("android", "Android", 449),
+                GooglePinyinUserDict.TypedEntry("pro", "pro", 703),
+            ),
+            result.typed
+        )
+    }
+
+    @Test
     fun decodesByBomOrFallsBackToGbk() {
         val text = "你好\t1\tni hao\n"
         val gbk = text.toByteArray(Charset.forName("GBK"))

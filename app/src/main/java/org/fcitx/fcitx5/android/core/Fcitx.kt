@@ -414,7 +414,8 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         @JvmStatic
         fun handleFcitxEvent(type: Int, params: Array<Any>) {
             val event = FcitxEvent.create(type, params)
-            Timber.d("Handling $event")
+            // formatting events (e.g. whole candidate lists) on every key press is not free
+            if (Timber.treeCount > 0) Timber.d("Handling $event")
             fcitxEventHandlers.forEach { it.invoke(event) }
             eventFlow_.tryEmit(event)
         }

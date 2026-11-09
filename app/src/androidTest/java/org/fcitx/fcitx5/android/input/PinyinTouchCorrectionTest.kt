@@ -46,6 +46,7 @@ class PinyinTouchCorrectionTest {
         val userDict get() = File(pinyinDir, "user.dict")
         val userHistory get() = File(pinyinDir, "user.history")
         val userEnglish get() = File(pinyinDir, "user.english")
+        val userTyped get() = File(pinyinDir, "user.typed")
 
         lateinit var fcitx: Fcitx
         val events = Channel<FcitxEvent<*>>(capacity = Channel.UNLIMITED)
@@ -55,7 +56,7 @@ class PinyinTouchCorrectionTest {
         @BeforeClass
         @JvmStatic
         fun setup() {
-            listOf(userDict, userHistory, userEnglish).forEach {
+            listOf(userDict, userHistory, userEnglish, userTyped).forEach {
                 backups[it] = it.takeIf { f -> f.exists() }?.readBytes()
                 it.delete()
             }
@@ -179,6 +180,28 @@ class PinyinTouchCorrectionTest {
         fcitx.sendKey(FcitxKeyMapping.FcitxKey_BackSpace, KeyStates.Virtual.states)
         delay(150)
         assertTrue("洮貔" in learnedWords())
+        fcitx.reset()
+    }
+
+    @Test
+    fun committedWordComesFirstForWhatWasTyped(): Unit = runBlocking {
+        while (events.tryReceive().isSuccess) { /* drop stale events */ }
+        assertFalse(typeWith("taopi", -1, null).firstOrNull() == "洮貔")
+        commitTaoPi()
+        key('a')
+        fcitx.reset()
+        // like Google Pinyin, the word committed for "taopi" comes first
+        assertEquals("洮貔", typeWith("taopi", -1, null).first())
+        // also when the last key hit "o" right next to "i"
+        val typo = typeWith("taopo", 4, KeyAlternatives("oi", floatArrayOf(-3.0f, -3.4f)))
+        assertTrue(typo.toString(), "洮貔" in typo.take(3))
+
+        // "Forget candidate" forgets it for the input, and for pinyin, like it never was
+        typeWith("taopi", -1, null)
+        val forget = fcitx.getCandidateActions(0).first { it.text == "Forget candidate" || it.text == "忘记候选词" }
+        fcitx.triggerCandidateAction(0, forget.id)
+        assertFalse("洮貔" in learnedWords())
+        assertFalse(typeWith("taopi", -1, null).firstOrNull() == "洮貔")
         fcitx.reset()
     }
 
