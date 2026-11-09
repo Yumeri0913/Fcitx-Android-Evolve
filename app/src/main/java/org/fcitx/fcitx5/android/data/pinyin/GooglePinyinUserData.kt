@@ -158,12 +158,12 @@ object GooglePinyinUserData {
             val count = f[2].toIntOrNull() ?: return@forEachLine
             lines[f[0] to f[1]] = TypedLine(f[0], f[1], count, f[3].toLongOrNull() ?: 0L)
         }
-        var stamp = lines.values.maxOfOrNull { it.stamp } ?: 0L
-        entries.sortedBy { it.count }.forEach { e ->
+        entries.forEach { e ->
             val key = e.code to e.word
             val old = lines[key]
             if (old == null) {
-                lines[key] = TypedLine(e.code, e.word, e.count, ++stamp)
+                // stamp 0: not committed in fcitx, so no boost as a recent commit
+                lines[key] = TypedLine(e.code, e.word, e.count, 0L)
             } else if (e.count > old.count) {
                 lines[key] = TypedLine(old.code, old.word, e.count, old.stamp)
             }

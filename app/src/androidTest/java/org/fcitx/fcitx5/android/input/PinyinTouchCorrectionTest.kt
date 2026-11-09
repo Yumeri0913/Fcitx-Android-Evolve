@@ -205,6 +205,34 @@ class PinyinTouchCorrectionTest {
         fcitx.reset()
     }
 
+    private suspend fun commitFor(input: String, word: String) {
+        val candidates = typeWith(input, -1, null)
+        while (events.tryReceive().isSuccess) { /* drop stale events */ }
+        fcitx.select(candidates.indexOf(word).also { assertTrue(candidates.toString(), it >= 0) })
+        val commit = withTimeout(5_000) {
+            events.receiveAsFlow().filterIsInstance<FcitxEvent.CommitStringEvent>().first()
+        }
+        assertEquals(word, commit.data.text)
+    }
+
+    @Test
+    fun recentlyCommittedWordComesFirst(): Unit = runBlocking {
+        val (used, recent) = typeWith("xg", -1, null).filter { it.length == 2 }.drop(1).take(2)
+        repeat(3) { commitFor("xg", used) }
+        assertEquals(used, typeWith("xg", -1, null).first())
+        // committed less often, but just now
+        commitFor("xg", recent)
+        val again = typeWith("xg", -1, null)
+        assertEquals(again.toString(), listOf(recent, used), again.take(2))
+
+        listOf(recent, used).forEach { word ->
+            val index = typeWith("xg", -1, null).indexOf(word)
+            val forget = fcitx.getCandidateActions(index).first { it.text == "Forget candidate" || it.text == "忘记候选词" }
+            fcitx.triggerCandidateAction(index, forget.id)
+        }
+        fcitx.reset()
+    }
+
     private suspend fun commitRaw(input: String) {
         fcitx.reset()
         while (events.tryReceive().isSuccess) { /* drop stale events */ }
