@@ -41,6 +41,8 @@ class GooglePinyinUserDataTest {
         val pinyinDir get() = File(context.getExternalFilesDir(null)!!, "data/pinyin").also { it.mkdirs() }
         val userDict get() = File(pinyinDir, "user.dict")
         val userHistory get() = File(pinyinDir, "user.history")
+        val userTyped get() = File(pinyinDir, "user.typed")
+        val userEnglish get() = File(pinyinDir, "user.english")
 
         lateinit var fcitx: Fcitx
         val events = Channel<FcitxEvent<*>>(capacity = Channel.UNLIMITED)
@@ -56,7 +58,9 @@ class GooglePinyinUserDataTest {
         @BeforeClass
         @JvmStatic
         fun setup() {
-            listOf(userDict, userHistory).forEach { backups[it] = it.takeIf { f -> f.exists() }?.readBytes() }
+            listOf(userDict, userHistory, userTyped, userEnglish).forEach {
+                backups[it] = it.takeIf { f -> f.exists() }?.readBytes()
+            }
             fcitx = Fcitx(context)
             fcitx.eventFlow.onEach { events.send(it) }.launchIn(scope)
         }
@@ -144,8 +148,7 @@ class GooglePinyinUserDataTest {
     @Test
     fun importedWordsLearnLikeGooglePinyin(): Unit = runBlocking {
         // start from empty user data, import as Google Pinyin import does
-        userDict.delete()
-        userHistory.delete()
+        listOf(userDict, userHistory, userTyped, userEnglish).forEach { it.delete() }
         GooglePinyinUserData.mergeFiles(userDict, userHistory, listOf(rare, frequent))
         startFcitx()
 

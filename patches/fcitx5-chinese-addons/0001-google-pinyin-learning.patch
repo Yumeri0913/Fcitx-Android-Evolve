@@ -270,7 +270,7 @@ index 0000000..add6fb5
 +
 +#endif // _PINYIN_ENGLISHUSERWORDS_H_
 diff --git a/im/pinyin/pinyin.cpp b/im/pinyin/pinyin.cpp
-index 7047c16..8726519 100644
+index 7047c16..d8f94b7 100644
 --- a/im/pinyin/pinyin.cpp
 +++ b/im/pinyin/pinyin.cpp
 @@ -20,8 +20,10 @@
@@ -631,7 +631,7 @@ index 7047c16..8726519 100644
          // If this is a word, remove it from user dict.
          if (sentence.size() == 1) {
              auto py = state->context_.candidateFullPinyin(index);
-@@ -1735,6 +2012,32 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
+@@ -1735,6 +2012,41 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
      updateUI(inputContext);
  }
  
@@ -653,6 +653,15 @@ index 7047c16..8726519 100644
 +    typedHistory_.remove(std::string_view(state->context_.userInput())
 +                             .substr(state->context_.selectedLength()),
 +                         word);
++    // The pinyin candidate hidden behind it was learned from the same commits:
++    // forget that too, or it stays on top.
++    const auto &sentences = state->context_.candidatesToCursor();
++    for (size_t i = 0; i < sentences.size(); i++) {
++        if (sentences[i].toString() == word) {
++            forgetCandidate(inputContext, i);
++            return;
++        }
++    }
 +
 +    const std::string currentInput = state->context_.userInput();
 +    resetForgetCandidate(inputContext);
@@ -664,7 +673,7 @@ index 7047c16..8726519 100644
  void PinyinEngine::saveCustomPhrase() {
      instance_->eventDispatcher().scheduleWithContext(watch(), [this]() {
          StandardPaths::global().safeSave(
-@@ -2098,6 +2401,31 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+@@ -2098,6 +2410,31 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
          return;
      }
  
@@ -696,7 +705,7 @@ index 7047c16..8726519 100644
      // Small hack to debug tabbed candidate on desktop.
  #if 0
      KeyList list;
-@@ -2319,6 +2647,16 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+@@ -2319,6 +2656,16 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
              event.filterAndAccept();
          } else if (event.key().checkKeyList(*config_.commitRawInput)) {
              inputContext->commitString(preeditCommitString(inputContext));
@@ -713,7 +722,7 @@ index 7047c16..8726519 100644
              state->context_.clear();
              state->context_.clearContextWords();
              event.filterAndAccept();
-@@ -2408,9 +2746,13 @@ void PinyinEngine::setSubConfig(const std::string &path,
+@@ -2408,9 +2755,13 @@ void PinyinEngine::setSubConfig(const std::string &path,
          loadExtraDict();
      } else if (path == "clearuserdict") {
          ime_->dict()->clear(libime::PinyinDictionary::UserDict);
@@ -727,7 +736,7 @@ index 7047c16..8726519 100644
      } else if (path == "customphrase") {
          loadCustomPhrase();
      }
-@@ -2429,6 +2771,10 @@ void PinyinEngine::doReset(InputContext *inputContext) const {
+@@ -2429,6 +2780,10 @@ void PinyinEngine::doReset(InputContext *inputContext) const {
      state->context_.clear();
      state->context_.clearContextWords();
      state->predictWords_.reset();
@@ -738,7 +747,7 @@ index 7047c16..8726519 100644
      inputContext->inputPanel().reset();
      inputContext->updatePreedit();
      inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
-@@ -2467,6 +2813,20 @@ void PinyinEngine::save() {
+@@ -2467,6 +2822,20 @@ void PinyinEngine::save() {
                  return false;
              }
          });

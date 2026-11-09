@@ -217,7 +217,8 @@ class PinyinTouchCorrectionTest {
 
     @Test
     fun recentlyCommittedWordComesFirst(): Unit = runBlocking {
-        val (used, recent) = typeWith("xg", -1, null).filter { it.length == 2 }.drop(1).take(2)
+        val before = typeWith("xg", -1, null)
+        val (used, recent) = before.filter { it.length == 2 }.drop(1).take(2)
         repeat(3) { commitFor("xg", used) }
         assertEquals(used, typeWith("xg", -1, null).first())
         // committed less often, but just now
@@ -230,6 +231,9 @@ class PinyinTouchCorrectionTest {
             val forget = fcitx.getCandidateActions(index).first { it.text == "Forget candidate" || it.text == "忘记候选词" }
             fcitx.triggerCandidateAction(index, forget.id)
         }
+        // forgotten like they were never committed, by the pinyin engine too
+        val after = typeWith("xg", -1, null)
+        assertEquals(after.toString(), before.take(3), after.take(3))
         fcitx.reset()
     }
 
