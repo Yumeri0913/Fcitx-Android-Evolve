@@ -121,9 +121,14 @@ class PinyinTouchCorrectionTest {
         val nearBorder = typeWith("nihqo", 3, KeyAlternatives("qaw", floatArrayOf(-3.0f, -3.2f, -9f)))
         assertTrue(nearBorder.take(3).toString(), "你好" in nearBorder.take(3))
 
-        // "a" 10^5 times less likely than "q": too far, not considered
-        val atCenter = typeWith("nihqo", 3, KeyAlternatives("qa", floatArrayOf(-3.0f, -14.5f)))
-        assertFalse(atCenter.take(10).toString(), "你好" in atCenter.take(10))
+        // deep into "q", "a" 10^4.4 times less likely: no cap on the penalty like Google Pinyin,
+        // nothing else makes sense of "hqo"
+        val deep = typeWith("nihqo", 3, KeyAlternatives("qa", floatArrayOf(-3.0f, -13.2f)))
+        assertTrue(deep.take(3).toString(), "你好" in deep.take(3))
+
+        // "a" not near the touch at all
+        val farAway = typeWith("nihqo", 3, KeyAlternatives("qw", floatArrayOf(-3.0f, -5.0f)))
+        assertFalse(farAway.take(5).toString(), "你好" in farAway.take(5))
         fcitx.reset()
     }
 

@@ -371,7 +371,7 @@ index 27e9e05..0fea775 100644
  
      return {};
 diff --git a/src/libime/pinyin/pinyindictionary.cpp b/src/libime/pinyin/pinyindictionary.cpp
-index 047ee3c..19116c7 100644
+index 047ee3c..13f7bc6 100644
 --- a/src/libime/pinyin/pinyindictionary.cpp
 +++ b/src/libime/pinyin/pinyindictionary.cpp
 @@ -11,6 +11,7 @@
@@ -390,19 +390,17 @@ index 047ee3c..19116c7 100644
  #include "libime/pinyin/pinyinmatchstate.h"
  #include "constants.h"
  #include "pinyindecoder_p.h"
-@@ -51,6 +53,11 @@ namespace libime {
+@@ -51,6 +53,9 @@ namespace libime {
  
  namespace {
  const float fuzzyCost = std::log10(0.5F);
 +// Fuzzies of a trie position: low bits are fuzzy cost units (each is
 +// fuzzyCost), every pinyin correction on the path adds one correctionMark.
 +constexpr size_t correctionMark = 1 << 16;
-+// Corrections less likely than this (log10) are not considered at all.
-+constexpr float maxSpatialCorrectionPenalty = 4.0F;
  const size_t minimumLongWordLength = 3;
  const float invalidPinyinCost = -100.0F;
  const char pinyinHanziSep = '!';
-@@ -212,6 +219,17 @@ inline void searchOneStep(
+@@ -212,6 +217,17 @@ inline void searchOneStep(
      nodes.splice(nodes.end(), std::move(extraNodes));
  }
  
@@ -420,7 +418,7 @@ index 047ee3c..19116c7 100644
  size_t fuzzyFactor(PinyinFuzzyFlags flags) {
      size_t factor = 0;
      if (flags.test(PinyinFuzzyFlag::Correction)) {
-@@ -314,7 +332,8 @@ public:
+@@ -314,7 +330,8 @@ public:
            flags_(matchState->fuzzyFlags()),
            spProfile_(matchState->shuangpinProfile()),
            correctionProfile_(matchState->correctionProfile()),
@@ -430,7 +428,7 @@ index 047ee3c..19116c7 100644
  
      explicit PinyinMatchContext(
          const SegmentGraph &graph, const GraphMatchCallback &callback,
-@@ -337,6 +356,14 @@ public:
+@@ -337,6 +354,14 @@ public:
      std::shared_ptr<const ShuangpinProfile> spProfile_;
      std::shared_ptr<const PinyinCorrectionProfile> correctionProfile_;
      size_t partialLongWordLimit_ = 0;
@@ -445,7 +443,7 @@ index 047ee3c..19116c7 100644
  };
  
  class PinyinDictionaryPrivate : fcitx::QPtrHolder<PinyinDictionary> {
-@@ -395,9 +422,75 @@ void PinyinDictionaryPrivate::addEmptyMatch(
+@@ -395,9 +420,76 @@ void PinyinDictionaryPrivate::addEmptyMatch(
      }
  }
  
@@ -492,12 +490,13 @@ index 047ee3c..19116c7 100644
 +                if (iter == alternatives->end()) {
 +                    return std::nullopt;
 +                }
++                // Like Google Pinyin, no cap on the penalty: the touch model
++                // only offers keys near the touch point, and a far one is
++                // still worth it when the language model strongly prefers it,
++                // e.g. hitting the middle of the key one row up.
 +                const float penalty =
 +                    std::max(0.0F, (typedScore - iter->second) /
 +                                       2.302585093F);
-+                if (penalty > maxSpatialCorrectionPenalty) {
-+                    return std::nullopt;
-+                }
 +                // At least one unit, so the exact key wins a tie.
 +                const auto units = 1 + static_cast<size_t>(std::ceil(
 +                                           penalty / -fuzzyCost));
@@ -522,7 +521,7 @@ index 047ee3c..19116c7 100644
      PinyinTriePositions positions;
      for (const auto &pr : path.triePositions()) {
          uint64_t _pos;
-@@ -426,7 +519,11 @@ PinyinTriePositions traverseAlongPathOneStepBySyllables(
+@@ -426,7 +518,11 @@ PinyinTriePositions traverseAlongPathOneStepBySyllables(
              };
              if (finals.size() > 1 || finals[0].first != PinyinFinal::Invalid) {
                  for (auto final : finals) {
@@ -535,7 +534,7 @@ index 047ee3c..19116c7 100644
                  }
              } else if (!path.flags_.test(PinyinDictFlag::FullMatch)) {
                  for (char test = PinyinEncoder::firstFinal;
-@@ -446,11 +543,9 @@ void matchWordsOnTrie(const PinyinTrie *userDict, const MatchedPinyinPath &path,
+@@ -446,11 +542,9 @@ void matchWordsOnTrie(const PinyinTrie *userDict, const MatchedPinyinPath &path,
          uint64_t pos;
          size_t fuzzies;
          std::tie(pos, fuzzies) = pr;
@@ -550,7 +549,7 @@ index 047ee3c..19116c7 100644
          if (matchLongWord) {
              path.trie()->foreach(
                  [userDict, &path, &callback, extraCost, isCorrection](
-@@ -540,7 +635,9 @@ bool PinyinDictionaryPrivate::matchWordsForOnePath(
+@@ -540,7 +634,9 @@ bool PinyinDictionaryPrivate::matchWordsForOnePath(
          }
      };
  
@@ -561,7 +560,7 @@ index 047ee3c..19116c7 100644
          auto &matchCache = (*context.matchCacheMap_)[path.trie()];
          auto *result =
              matchCache.find(path.path_, context.hasher_, context.hasher_);
-@@ -623,6 +720,13 @@ void PinyinDictionaryPrivate::findMatchesBetween(
+@@ -623,6 +719,13 @@ void PinyinDictionaryPrivate::findMatchesBetween(
                    pinyin, *context.spProfile_, context.flags_)
              : PinyinEncoder::stringToSyllablesWithFuzzyFlags(
                    pinyin, context.correctionProfile_.get(), context.flags_);
@@ -575,7 +574,7 @@ index 047ee3c..19116c7 100644
      const MatchedPinyinPaths &prevMatchedPaths = matchedPathsMap[&prevNode];
      MatchedPinyinPaths newPaths;
      for (const auto &path : prevMatchedPaths) {
-@@ -631,7 +735,9 @@ void PinyinDictionaryPrivate::findMatchesBetween(
+@@ -631,7 +734,9 @@ void PinyinDictionaryPrivate::findMatchesBetween(
          segmentPath.push_back(&currentNode);
  
          // A map from trie (dict) to a lru cache.
@@ -586,7 +585,7 @@ index 047ee3c..19116c7 100644
              auto &nodeCache = (*context.nodeCacheMap_)[path.trie()];
              auto *p =
                  nodeCache.find(segmentPath, context.hasher_, context.hasher_);
-@@ -642,7 +748,7 @@ void PinyinDictionaryPrivate::findMatchesBetween(
+@@ -642,7 +747,7 @@ void PinyinDictionaryPrivate::findMatchesBetween(
                  nodeCache.insert(context.hasher_.pathToPinyins(segmentPath),
                                   result);
                  result->triePositions_ =
@@ -595,7 +594,7 @@ index 047ee3c..19116c7 100644
              } else {
                  result = *p;
                  assert(result->size_ == path.size() + 1);
-@@ -657,7 +763,7 @@ void PinyinDictionaryPrivate::findMatchesBetween(
+@@ -657,7 +762,7 @@ void PinyinDictionaryPrivate::findMatchesBetween(
                                    path.flags_);
  
              newPaths.back().result_->triePositions_ =

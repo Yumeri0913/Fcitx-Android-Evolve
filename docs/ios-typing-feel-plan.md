@@ -8,7 +8,7 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `patches/libime/0001-google-pinyin-touch-correction-and-undo-learn.patch` | 按落点给纠错定价，纠错表加上下行邻键，撤销学习接口 |
+| `patches/libime/0001-google-pinyin-touch-correction-and-undo-learn.patch` | 按落点给纠错定价（和谷歌一样不设代价上限，只考虑落点模型给出的邻键），纠错表加上下行邻键，撤销学习接口 |
 | `patches/fcitx5-chinese-addons/0001-google-pinyin-learning.patch` | 上屏后紧接着退格撤销这次学习；回车上屏的英文加入自学习词库 |
 
 两个补丁基于安卓仓库当前固定的子模块版本：libime `ecd23795`，fcitx5-chinese-addons `19f06898`。fcitx5-ios 已经有 `patches/libime.patch`，需要把新补丁合进去，冲突时以功能为准手工调整。
@@ -27,7 +27,7 @@
 - **单位换算。** 坐标换算成毫米。iOS 上用 point 乘以每毫米的 point 数，iPhone 的 UIKit 坐标约为每英寸 163pt，即每毫米约 6.4pt。
 - **概率分布。** 每个键是以键中心为均值的二维高斯分布。键宽 W、键高 H 的单位是毫米，按键的整个格子都算，不只是可见的键面：
   - `varX = 0.0075 × (1.5W)² + 1.68`
-  - `varY = 0.0108 × (1.5H)² + 1.33`
+  - `varY = max(0.0108 × (1.5H)² + 1.33, varX × (H/W)²)`。后一项是对谷歌的修正：谷歌的公式适合接近方形的键，我们的键约高 1.4 倍，按原公式手指偏进上下行同样比例时代价比左右邻键高得多，上下行的误触几乎纠不回来。
   - `score = ln(1 / (2π√(varX·varY))) − 0.5·(dx²/varX + dy²/varY)`
 - **邻键范围。** 设 m 为最常见键宽与最常见键高中较小的一个。邻键需同时满足两个条件：键中心到被按键矩形的距离不超过 1.2m，触点到邻键矩形的距离不超过 m。
 - **输出顺序。** 先放被按的键和它的分数，再按分数从高到低放邻键。

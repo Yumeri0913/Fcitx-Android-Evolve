@@ -39,7 +39,8 @@ class SpatialModelTest {
         val wMm = w * 25.4f / dpi
         val hMm = h * 25.4f / dpi
         val varX = 0.0075f * (1.5f * wMm) * (1.5f * wMm) + 1.68f
-        val varY = 0.0108f * (1.5f * hMm) * (1.5f * hMm) + 1.33f
+        // vertical variance follows the key aspect ratio when that is larger
+        val varY = maxOf(0.0108f * (1.5f * hMm) * (1.5f * hMm) + 1.33f, varX * (hMm / wMm) * (hMm / wMm))
         val peak = ln(1.0 / (2 * PI * sqrt((varX * varY).toDouble()))).toFloat()
         assertEquals(peak, model.score(k, k.centerX, k.centerY), 1e-4f)
         val dxMm = 2f
@@ -75,6 +76,20 @@ class SpatialModelTest {
         // far keys are never considered
         assertFalse('m' in alt.keys)
         assertFalse('p' in alt.keys)
+    }
+
+    @Test
+    fun sameDepthIntoRowOrColumnNeighborCostsTheSame() {
+        // moving 20% of the key away from the border with 'h' (right) or 't' (above, staggered)
+        // makes the neighbor less likely by the same amount
+        val g = key('g')
+        fun penalty(x: Float, y: Float, neighbor: Char): Float {
+            val alt = model.alternatives('g', x, y)!!
+            return alt.scores[0] - alt.scores[alt.keys.indexOf(neighbor)]
+        }
+        val toH = penalty(g.right - 0.2f * w, g.centerY, 'h') - penalty(g.right - 1f, g.centerY, 'h')
+        val toT = penalty(g.centerX, g.top + 0.2f * h, 't') - penalty(g.centerX, g.top + 1f, 't')
+        assertEquals(toH, toT, 0.1f)
     }
 
     @Test

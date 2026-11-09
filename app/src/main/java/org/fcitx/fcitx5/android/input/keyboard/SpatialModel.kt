@@ -17,6 +17,11 @@ import kotlin.math.sqrt
  * For one touch, the touched key and the nearby keys are scored by the log density at the touch
  * point. The scores go to the pinyin decoder, which uses them to price keyboard corrections.
  *
+ * One change from Google: the vertical variance grows at least with the key aspect ratio
+ * (`varY >= varX * (h / w)²`). Google's formula fits keys about as tall as wide; for our keys,
+ * about 1.4 times as tall, it made a touch some way into the row above or below cost much more
+ * than the same miss into a left or right neighbor, so vertical typos were rarely corrected.
+ *
  * All coordinates are in pixels of the same view; [xdpi]/[ydpi] convert them to millimeters.
  */
 class SpatialModel(
@@ -63,7 +68,7 @@ class SpatialModel(
         val w = pxToMmX(key.width)
         val h = pxToMmY(key.height)
         val varX = 0.0075f * (1.5f * w) * (1.5f * w) + 1.68f
-        val varY = 0.0108f * (1.5f * h) * (1.5f * h) + 1.33f
+        val varY = max(0.0108f * (1.5f * h) * (1.5f * h) + 1.33f, varX * (h / w) * (h / w))
         val dx = pxToMmX(x - key.centerX)
         val dy = pxToMmY(y - key.centerY)
         val norm = ln(1.0 / (2.0 * PI * sqrt((varX * varY).toDouble()))).toFloat()
