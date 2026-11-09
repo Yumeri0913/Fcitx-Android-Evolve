@@ -407,7 +407,7 @@ index 7047c16..d8f94b7 100644
 +                addScored(std::move(w.word), w.score, {});
 +            }
 +
-+            // Like Google Pinyin, what the user commits counts with the touch
++            // What the user commits counts with the touch
 +            // position: words committed for the code with one touched key
 +            // replaced by a key the touch model offered.
 +            if (TypedCodeHistory::key(pyBeforeCursor).size() ==

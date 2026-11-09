@@ -26,7 +26,8 @@ import splitties.views.imageResource
 /**
  * Google Pinyin 4.x digit keyboard (keyboard_non_prime_digit): a scrollable column of + - * / ( )
  * showing four at a time on the left, 1-9 in the middle, # space backspace on the right, and
- * 返回 , @?# 0 = . return at the bottom. Columns weigh 149/702/149 like Google's.
+ * 返回 , @?# 0 = . return at the bottom. Columns weigh 149/702/149. Symbols are
+ * committed as is, never as full width punctuation.
  */
 @SuppressLint("ViewConstructor")
 class NumberKeyboard(
@@ -42,12 +43,12 @@ class NumberKeyboard(
 
         /** Google Pinyin's left panel, four visible at a time */
         private val LeftPanel = listOf(
-            NumPadKey("+", 0xffab, 23f, 1f, KeyDef.Appearance.Variant.Alternative),
-            NumPadKey("-", 0xffad, 23f, 1f, KeyDef.Appearance.Variant.Alternative),
-            NumPadKey("*", 0xffaa, 23f, 1f, KeyDef.Appearance.Variant.Alternative),
-            NumPadKey("/", 0xffaf, 23f, 1f, KeyDef.Appearance.Variant.Alternative),
-            NumPadKey("(", 0x0028, 23f, 1f, KeyDef.Appearance.Variant.Alternative),
-            NumPadKey(")", 0x0029, 23f, 1f, KeyDef.Appearance.Variant.Alternative),
+            NumPadTextKey("+", percentWidth = 1f),
+            NumPadTextKey("-", percentWidth = 1f),
+            NumPadTextKey("*", percentWidth = 1f),
+            NumPadTextKey("/", percentWidth = 1f),
+            NumPadTextKey("(", percentWidth = 1f),
+            NumPadTextKey(")", percentWidth = 1f),
         )
         private const val LEFT_PANEL_VISIBLE = 4
 
@@ -63,7 +64,7 @@ class NumberKeyboard(
                 NumPadKey("1", 0xffb1, 30f, DIGIT),
                 NumPadKey("2", 0xffb2, 30f, DIGIT),
                 NumPadKey("3", 0xffb3, 30f, DIGIT),
-                NumPadKey("#", 0x0023, 23f, SIDE, KeyDef.Appearance.Variant.Alternative),
+                NumPadTextKey("#", percentWidth = SIDE),
             ),
             listOf(
                 panelSpace(),
@@ -80,13 +81,13 @@ class NumberKeyboard(
                 BackspaceKey(SIDE)
             ),
             listOf(
-                // Google Pinyin digit keyboard bottom row: 150/100/100/300/100/100/150
+                // Digit keyboard bottom row: 150/100/100/300/100/100/150
                 LayoutSwitchKey("返回", TextKeyboard.Name, viewId = R.id.button_back_to_text),
-                NumPadKey(",", 0xffac, 23f, 0.1f, KeyDef.Appearance.Variant.Alternative),
+                NumPadTextKey(","),
                 LayoutSwitchKey("@?#", PickerWindow.Key.Symbol.name, 0.1f, KeyDef.Appearance.Variant.AltForeground),
                 NumPadKey("0", 0xffb0, 30f, 0.3f),
-                NumPadKey("=", 0xffbd, 23f, 0.1f, KeyDef.Appearance.Variant.AltForeground),
-                NumPadKey(".", 0xffae, 23f, 0.1f, KeyDef.Appearance.Variant.Alternative),
+                NumPadTextKey("=", variant = KeyDef.Appearance.Variant.AltForeground),
+                NumPadTextKey("."),
                 ReturnKey()
             )
         )

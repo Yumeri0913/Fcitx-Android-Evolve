@@ -315,6 +315,27 @@ class MiniSpaceKey(percentWidth: Float = 0.15f) : KeyDef(
     )
 )
 
+/**
+ * Digit keyboard symbol: committed as is, never turned into full width
+ * punctuation by the input method
+ */
+class NumPadTextKey(
+    displayText: String,
+    textSize: Float = 23f,
+    percentWidth: Float = 0.1f,
+    variant: Variant = Variant.Alternative
+) : KeyDef(
+    Appearance.Text(
+        displayText,
+        textSize = textSize,
+        percentWidth = percentWidth,
+        variant = variant
+    ),
+    setOf(
+        Behavior.Press(KeyAction.CommitAction(displayText))
+    )
+)
+
 class NumPadKey(
     displayText: String,
     val sym: Int,

@@ -490,7 +490,7 @@ index 047ee3c..13f7bc6 100644
 +                if (iter == alternatives->end()) {
 +                    return std::nullopt;
 +                }
-+                // Like Google Pinyin, no cap on the penalty: the touch model
++                // No cap on the penalty: the touch model
 +                // only offers keys near the touch point, and a far one is
 +                // still worth it when the language model strongly prefers it,
 +                // e.g. hitting the middle of the key one row up.
