@@ -133,6 +133,30 @@ class PinyinTouchCorrectionTest {
         fcitx.reset()
     }
 
+    private suspend fun setDynamicKeyTargets(on: Boolean) {
+        val cfg = fcitx.getImConfig("pinyin").findByName("cfg")!!
+        cfg.getOrCreate("DynamicKeyTargets").value = if (on) "True" else "False"
+        fcitx.setImConfig("pinyin", cfg)
+    }
+
+    @Test
+    fun dynamicKeyTargetsFollowTheWordsAndCanBeTurnedOff(): Unit = runBlocking {
+        val zha = typeWith("zha", -1, null)
+        val zhs = typeWith("zhs", -1, null)
+        // s touched right at its border with a: words continue "zh" with a, never with s
+        val border = KeyAlternatives("sa", floatArrayOf(-3.0f, -3.05f))
+        val on = typeWith("zhs", 2, border)
+        assertEquals(on.toString(), zha.first(), on.first())
+        setDynamicKeyTargets(false)
+        try {
+            val off = typeWith("zhs", 2, border)
+            assertEquals(off.toString(), zhs.first(), off.first())
+        } finally {
+            setDynamicKeyTargets(true)
+        }
+        fcitx.reset()
+    }
+
     @Test
     fun touchPositionDecidesRowNeighborCorrection(): Unit = runBlocking {
         // nihai is valid by itself (你还), 你好 needs i -> o

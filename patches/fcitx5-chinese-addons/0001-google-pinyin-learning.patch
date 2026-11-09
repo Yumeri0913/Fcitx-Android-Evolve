@@ -270,7 +270,7 @@ index 0000000..add6fb5
 +
 +#endif // _PINYIN_ENGLISHUSERWORDS_H_
 diff --git a/im/pinyin/pinyin.cpp b/im/pinyin/pinyin.cpp
-index 7047c16..a072a5a 100644
+index 7047c16..0dd1f6e 100644
 --- a/im/pinyin/pinyin.cpp
 +++ b/im/pinyin/pinyin.cpp
 @@ -19,9 +19,12 @@
@@ -644,7 +644,7 @@ index 7047c16..a072a5a 100644
          // If this is a word, remove it from user dict.
          if (sentence.size() == 1) {
              auto py = state->context_.candidateFullPinyin(index);
-@@ -1735,6 +2024,123 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
+@@ -1735,6 +2024,124 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
      updateUI(inputContext);
  }
  
@@ -653,7 +653,8 @@ index 7047c16..a072a5a 100644
 +    const auto &pending = libime::PinyinContext::peekPendingKeyAlternatives();
 +    auto *state = inputContext->propertyFor(&factory_);
 +    const auto &context = state->context_;
-+    if (keyPriorWeight <= 0 || typed.size() != 1 || pending.size() < 2 ||
++    if (!*config_.dynamicKeyTargets || keyPriorWeight <= 0 ||
++        typed.size() != 1 || pending.size() < 2 ||
 +        pending.front().first != typed[0] || context.empty() ||
 +        context.cursor() != context.size()) {
 +        return typed;
@@ -768,7 +769,7 @@ index 7047c16..a072a5a 100644
  void PinyinEngine::saveCustomPhrase() {
      instance_->eventDispatcher().scheduleWithContext(watch(), [this]() {
          StandardPaths::global().safeSave(
-@@ -2098,6 +2504,31 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+@@ -2098,6 +2505,31 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
          return;
      }
  
@@ -800,7 +801,7 @@ index 7047c16..a072a5a 100644
      // Small hack to debug tabbed candidate on desktop.
  #if 0
      KeyList list;
-@@ -2237,7 +2668,11 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+@@ -2237,7 +2669,11 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
              }
          }
          event.filterAndAccept();
@@ -813,7 +814,7 @@ index 7047c16..a072a5a 100644
              return;
          }
      } else if (!state->context_.empty()) {
-@@ -2319,6 +2754,16 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+@@ -2319,6 +2755,16 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
              event.filterAndAccept();
          } else if (event.key().checkKeyList(*config_.commitRawInput)) {
              inputContext->commitString(preeditCommitString(inputContext));
@@ -830,7 +831,7 @@ index 7047c16..a072a5a 100644
              state->context_.clear();
              state->context_.clearContextWords();
              event.filterAndAccept();
-@@ -2408,9 +2853,13 @@ void PinyinEngine::setSubConfig(const std::string &path,
+@@ -2408,9 +2854,13 @@ void PinyinEngine::setSubConfig(const std::string &path,
          loadExtraDict();
      } else if (path == "clearuserdict") {
          ime_->dict()->clear(libime::PinyinDictionary::UserDict);
@@ -844,7 +845,7 @@ index 7047c16..a072a5a 100644
      } else if (path == "customphrase") {
          loadCustomPhrase();
      }
-@@ -2429,6 +2878,10 @@ void PinyinEngine::doReset(InputContext *inputContext) const {
+@@ -2429,6 +2879,10 @@ void PinyinEngine::doReset(InputContext *inputContext) const {
      state->context_.clear();
      state->context_.clearContextWords();
      state->predictWords_.reset();
@@ -855,7 +856,7 @@ index 7047c16..a072a5a 100644
      inputContext->inputPanel().reset();
      inputContext->updatePreedit();
      inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
-@@ -2467,6 +2920,20 @@ void PinyinEngine::save() {
+@@ -2467,6 +2921,20 @@ void PinyinEngine::save() {
                  return false;
              }
          });
@@ -877,7 +878,7 @@ index 7047c16..a072a5a 100644
  
  std::string PinyinEngine::subMode(const InputMethodEntry &entry,
 diff --git a/im/pinyin/pinyin.h b/im/pinyin/pinyin.h
-index d96fc1c..bc45da3 100644
+index d96fc1c..19fa4ca 100644
 --- a/im/pinyin/pinyin.h
 +++ b/im/pinyin/pinyin.h
 @@ -8,7 +8,9 @@
@@ -890,7 +891,18 @@ index d96fc1c..bc45da3 100644
  #include "workerthread.h"
  #include <cstddef>
  #include <cstdint>
-@@ -350,8 +352,10 @@ FCITX_CONFIGURATION(
+@@ -173,6 +175,10 @@ FCITX_CONFIGURATION(
+                               _("Show English Candidates"), true};
+     Option<bool> symbolsEnabled{this, "SymbolsEnabled",
+                                 _("Show symbol candidates"), true};
++    // Near a key border, a touch goes to the key the words being typed make
++    // more likely (needs touch data from the keyboard).
++    Option<bool> dynamicKeyTargets{this, "DynamicKeyTargets",
++                                   _("Dynamic key targets"), true};
+     Option<bool> chaiziEnabled{this, "ChaiziEnabled",
+                                _("Show Chaizi candidates"), true};
+     Option<bool> extBEnabled{
+@@ -350,8 +356,10 @@ FCITX_CONFIGURATION(
          _("Key to trigger quickphrase"),
          Key{FcitxKey_semicolon},
          {KeyConstrainFlag::AllowModifierLess}};
@@ -902,7 +914,7 @@ index d96fc1c..bc45da3 100644
      ExternalOption quickphrase{this, "QuickPhrase", _("Quick Phrase"),
                                 "fcitx://config/addon/quickphrase/editor"};
      Option<std::vector<std::string>, ListConstrain<RegexConstrain>,
-@@ -394,6 +398,23 @@ public:
+@@ -394,6 +402,23 @@ public:
      int keyReleased_ = -1;
      int keyReleasedIndex_ = -2;
      uint64_t lastKeyPressedTime_ = 0;
@@ -926,7 +938,7 @@ index d96fc1c..bc45da3 100644
  };
  
  class PinyinEngine final : public InputMethodEngineV3,
-@@ -446,6 +467,10 @@ public:
+@@ -446,6 +471,10 @@ public:
                           const std::string &customPhrase);
      void deleteCustomPhrase(InputContext *inputContext,
                              const std::string &customPhrase);
@@ -937,7 +949,7 @@ index d96fc1c..bc45da3 100644
  
      FCITX_ADDON_DEPENDENCY_LOADER(cloudpinyin, instance_->addonManager());
      FCITX_ADDON_DEPENDENCY_LOADER(pinyinhelper, instance_->addonManager());
-@@ -515,6 +540,8 @@ private:
+@@ -515,6 +544,8 @@ private:
      std::unique_ptr<EventSource> deferredPreload_;
      std::unique_ptr<HandlerTableEntry<EventHandler>> event_;
      CustomPhraseDict customPhrase_;
@@ -1403,3 +1415,31 @@ index 0000000..d9a850d
 +} // namespace fcitx
 +
 +#endif // _PINYIN_TYPEDCODEHISTORY_H_
+diff --git a/po/zh_CN.po b/po/zh_CN.po
+index 9e0c501..9a37bb8 100644
+--- a/po/zh_CN.po
++++ b/po/zh_CN.po
+@@ -639,6 +639,9 @@ msgstr "显示英文候选词"
+ msgid "Show symbol candidates"
+ msgstr "显示符号候选词"
+ 
++msgid "Dynamic key targets"
++msgstr "动态按键范围"
++
+ #: im/pinyin/pinyin.h:178
+ msgid "Show Chaizi candidates"
+ msgstr "显示拆字候选词"
+diff --git a/po/zh_TW.po b/po/zh_TW.po
+index b5c003e..1a5ea90 100644
+--- a/po/zh_TW.po
++++ b/po/zh_TW.po
+@@ -641,6 +641,9 @@ msgstr "顯示英文候選詞"
+ msgid "Show symbol candidates"
+ msgstr "顯示符號候選詞"
+ 
++msgid "Dynamic key targets"
++msgstr "動態按鍵範圍"
++
+ #: im/pinyin/pinyin.h:178
+ msgid "Show Chaizi candidates"
+ msgstr "顯示拆字候選詞"
