@@ -270,12 +270,14 @@ index 0000000..add6fb5
 +
 +#endif // _PINYIN_ENGLISHUSERWORDS_H_
 diff --git a/im/pinyin/pinyin.cpp b/im/pinyin/pinyin.cpp
-index 7047c16..d8f94b7 100644
+index 7047c16..a072a5a 100644
 --- a/im/pinyin/pinyin.cpp
 +++ b/im/pinyin/pinyin.cpp
-@@ -20,8 +20,10 @@
+@@ -19,9 +19,12 @@
+ #include "spell_public.h"
  #include "workerthread.h"
  #include <algorithm>
++#include <array>
  #include <cassert>
 +#include <cmath>
  #include <cstddef>
@@ -284,7 +286,7 @@ index 7047c16..d8f94b7 100644
  #include <ctime>
  #include <exception>
  #include <fcitx-config/iniparser.h>
-@@ -140,6 +142,69 @@ predictCandidateList(PinyinEngine *engine, const std::vector<T> &words) {
+@@ -140,6 +143,80 @@ predictCandidateList(PinyinEngine *engine, const std::vector<T> &words) {
      return candidateList;
  }
  
@@ -313,6 +315,17 @@ index 7047c16..d8f94b7 100644
 +// before.
 +const float typedCorrectionMinScore =
 +    envFloat("FCITX_PINYIN_TYPED_CORRECTION_MIN_SCORE", 1.0F);
++// Dynamic key targets: a touch goes to the key among
++// those the touch model offered with the best touch log likelihood plus this
++// times ln P(key | what is being typed), so near a border the key the words
++// make more likely wins. 0 turns it off. Tuned with
++// the benchmark script on a real user dictionary:
++// 0.5 corrects 5% more typos of words typed before and twice as many English
++// ones, without hurting clean typing; 2 starts turning new words into known
++// ones.
++const float keyPriorWeight = envFloat("FCITX_PINYIN_KEY_PRIOR_WEIGHT", 0.5F);
++// Share of P(key) spread evenly over all letters, so no key is ruled out.
++const float keyPriorFloor = envFloat("FCITX_PINYIN_KEY_PRIOR_FLOOR", 0.05F);
 +
 +// Whether typed letters spell the selected words' pinyin, each syllable typed
 +// in full or abbreviated to a prefix. A commit that does not (a keyboard
@@ -354,7 +367,7 @@ index 7047c16..d8f94b7 100644
  std::tuple<bool, int> englishNess(const std::string &input, bool sp) {
      const auto pys = stringutils::split(input, " ");
      constexpr int fullWeight = -2;
-@@ -532,8 +597,23 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
+@@ -532,8 +609,23 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
      const auto &context = state->context_;
      if (context.selected()) {
          auto sentence = context.sentence();
@@ -378,7 +391,7 @@ index 7047c16..d8f94b7 100644
          }
          inputContext->commitString(sentence);
          inputContext->updatePreedit();
-@@ -578,6 +658,91 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
+@@ -578,6 +670,91 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
          std::unordered_map<std::string,
                             std::unique_ptr<PinyinAbstractCandidateWord>>
              customCandidateMap;
@@ -470,7 +483,7 @@ index 7047c16..d8f94b7 100644
          /// Create custom phrase candidate {{{
          do {
              const auto *results = customPhrase_.lookup(pyBeforeCursor);
-@@ -633,10 +798,71 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
+@@ -633,10 +810,71 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
          }
          /// }}}
  
@@ -543,7 +556,7 @@ index 7047c16..d8f94b7 100644
              parsedPyCursor >= selectedSentence.size() &&
              selectedLength <= context.cursor()) {
              auto [hasUpper, engNess] =
-@@ -790,6 +1016,18 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
+@@ -790,6 +1028,18 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
              candidates, std::ranges::next(candidates.begin(), middle),
              candidateCompare);
  
@@ -562,7 +575,7 @@ index 7047c16..d8f94b7 100644
          // Apply the candidate to candidate generation.
          for (auto &candidatePtr : candidates) {
              // Candidate pointer shall still valid here.
-@@ -832,12 +1070,16 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
+@@ -832,12 +1082,16 @@ void PinyinEngine::updateUI(InputContext *inputContext) {
                  for (const auto &symbol : *symbols) {
                      const bool isFull =
                          candidate->selectLength() == pyBeforeCursor.size();
@@ -582,7 +595,7 @@ index 7047c16..d8f94b7 100644
  
          candidateList->setSelectionKey(selectionKeys_);
          if (!candidateList->empty()) {
-@@ -938,6 +1180,38 @@ PinyinEngine::PinyinEngine(Instance *instance)
+@@ -938,6 +1192,38 @@ PinyinEngine::PinyinEngine(Instance *instance)
          }
      } while (0);
  
@@ -621,7 +634,7 @@ index 7047c16..d8f94b7 100644
      ime_->setScoreFilter(1);
      loadBuiltInDict();
      reloadConfig();
-@@ -1718,6 +1992,9 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
+@@ -1718,6 +2004,9 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
  
      if (index < state->context_.candidatesToCursor().size()) {
          const auto &sentence = state->context_.candidatesToCursor()[index];
@@ -631,10 +644,92 @@ index 7047c16..d8f94b7 100644
          // If this is a word, remove it from user dict.
          if (sentence.size() == 1) {
              auto py = state->context_.candidateFullPinyin(index);
-@@ -1735,6 +2012,41 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
+@@ -1735,6 +2024,123 @@ void PinyinEngine::forgetCandidate(InputContext *inputContext, size_t index) {
      updateUI(inputContext);
  }
  
++std::string PinyinEngine::dynamicKey(InputContext *inputContext,
++                                     const std::string &typed) {
++    const auto &pending = libime::PinyinContext::peekPendingKeyAlternatives();
++    auto *state = inputContext->propertyFor(&factory_);
++    const auto &context = state->context_;
++    if (keyPriorWeight <= 0 || typed.size() != 1 || pending.size() < 2 ||
++        pending.front().first != typed[0] || context.empty() ||
++        context.cursor() != context.size()) {
++        return typed;
++    }
++    const auto input = TypedCodeHistory::key(
++        context.userInput().substr(context.selectedLength()));
++    if (input.empty()) {
++        return typed;
++    }
++
++    // Letters the words being typed continue with: the candidates' pinyin, by
++    // rank, and codes committed before, by count.
++    std::array<double, 26> fromCandidates{};
++    double candidateTotal = 0;
++    const auto &candidates = context.candidatesToCursor();
++    for (size_t i = 0; i < candidates.size() && i < 20; i++) {
++        auto full = context.candidateFullPinyin(candidates[i]);
++        std::erase(full, '\'');
++        if (full.size() <= input.size() || !full.starts_with(input)) {
++            continue;
++        }
++        const char next = full[input.size()];
++        if (next < 'a' || next > 'z') {
++            continue;
++        }
++        const double weight = 1.0 / static_cast<double>(i + 1);
++        fromCandidates[next - 'a'] += weight;
++        candidateTotal += weight;
++    }
++    const auto typedCounts = typedHistory_.nextLetterCounts(input);
++    double typedTotal = 0;
++    for (auto count : typedCounts) {
++        typedTotal += static_cast<double>(count);
++    }
++    if (candidateTotal == 0 && typedTotal == 0) {
++        return typed;
++    }
++    const double sources =
++        (candidateTotal > 0 ? 1 : 0) + (typedTotal > 0 ? 1 : 0);
++    auto prior = [&](char c) {
++        double p = 0;
++        if (c >= 'a' && c <= 'z') {
++            if (candidateTotal > 0) {
++                p += fromCandidates[c - 'a'] / candidateTotal;
++            }
++            if (typedTotal > 0) {
++                p += static_cast<double>(typedCounts[c - 'a']) / typedTotal;
++            }
++        }
++        return keyPriorFloor / 26.0 + (1.0 - keyPriorFloor) * p / sources;
++    };
++
++    auto best = pending.front();
++    double bestScore =
++        best.second + keyPriorWeight * std::log(prior(best.first));
++    for (const auto &alternative : pending) {
++        const double score =
++            alternative.second +
++            keyPriorWeight * std::log(prior(alternative.first));
++        if (score > bestScore) {
++            best = alternative;
++            bestScore = score;
++        }
++    }
++    if (best.first == typed[0]) {
++        return typed;
++    }
++    // The chosen key is what was typed now; the touched one stays an
++    // alternative for corrections.
++    auto reordered = pending;
++    std::ranges::stable_partition(
++        reordered, [&best](const auto &a) { return a.first == best.first; });
++    libime::PinyinContext::setPendingKeyAlternatives(std::move(reordered));
++    return std::string(1, best.first);
++}
++
 +void PinyinEngine::learnEnglishWord(InputContext *inputContext,
 +                                    const std::string &word) {
 +    auto *state = inputContext->propertyFor(&factory_);
@@ -673,7 +768,7 @@ index 7047c16..d8f94b7 100644
  void PinyinEngine::saveCustomPhrase() {
      instance_->eventDispatcher().scheduleWithContext(watch(), [this]() {
          StandardPaths::global().safeSave(
-@@ -2098,6 +2410,31 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+@@ -2098,6 +2504,31 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
          return;
      }
  
@@ -705,7 +800,20 @@ index 7047c16..d8f94b7 100644
      // Small hack to debug tabbed candidate on desktop.
  #if 0
      KeyList list;
-@@ -2319,6 +2656,16 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+@@ -2237,7 +2668,11 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
+             }
+         }
+         event.filterAndAccept();
+-        if (!state->context_.type(keyStr.get())) {
++        auto typed = keyStr.get();
++        if (event.key().isLAZ()) {
++            typed = dynamicKey(inputContext, typed);
++        }
++        if (!state->context_.type(typed)) {
+             return;
+         }
+     } else if (!state->context_.empty()) {
+@@ -2319,6 +2754,16 @@ void PinyinEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
              event.filterAndAccept();
          } else if (event.key().checkKeyList(*config_.commitRawInput)) {
              inputContext->commitString(preeditCommitString(inputContext));
@@ -722,7 +830,7 @@ index 7047c16..d8f94b7 100644
              state->context_.clear();
              state->context_.clearContextWords();
              event.filterAndAccept();
-@@ -2408,9 +2755,13 @@ void PinyinEngine::setSubConfig(const std::string &path,
+@@ -2408,9 +2853,13 @@ void PinyinEngine::setSubConfig(const std::string &path,
          loadExtraDict();
      } else if (path == "clearuserdict") {
          ime_->dict()->clear(libime::PinyinDictionary::UserDict);
@@ -736,7 +844,7 @@ index 7047c16..d8f94b7 100644
      } else if (path == "customphrase") {
          loadCustomPhrase();
      }
-@@ -2429,6 +2780,10 @@ void PinyinEngine::doReset(InputContext *inputContext) const {
+@@ -2429,6 +2878,10 @@ void PinyinEngine::doReset(InputContext *inputContext) const {
      state->context_.clear();
      state->context_.clearContextWords();
      state->predictWords_.reset();
@@ -747,7 +855,7 @@ index 7047c16..d8f94b7 100644
      inputContext->inputPanel().reset();
      inputContext->updatePreedit();
      inputContext->updateUserInterface(UserInterfaceComponent::InputPanel);
-@@ -2467,6 +2822,20 @@ void PinyinEngine::save() {
+@@ -2467,6 +2920,20 @@ void PinyinEngine::save() {
                  return false;
              }
          });
@@ -769,7 +877,7 @@ index 7047c16..d8f94b7 100644
  
  std::string PinyinEngine::subMode(const InputMethodEntry &entry,
 diff --git a/im/pinyin/pinyin.h b/im/pinyin/pinyin.h
-index d96fc1c..452ba7a 100644
+index d96fc1c..bc45da3 100644
 --- a/im/pinyin/pinyin.h
 +++ b/im/pinyin/pinyin.h
 @@ -8,7 +8,9 @@
@@ -818,16 +926,18 @@ index d96fc1c..452ba7a 100644
  };
  
  class PinyinEngine final : public InputMethodEngineV3,
-@@ -446,6 +467,8 @@ public:
+@@ -446,6 +467,10 @@ public:
                           const std::string &customPhrase);
      void deleteCustomPhrase(InputContext *inputContext,
                              const std::string &customPhrase);
 +    void learnEnglishWord(InputContext *inputContext, const std::string &word);
++    std::string dynamicKey(InputContext *inputContext,
++                           const std::string &typed);
 +    void forgetLearnedWord(InputContext *inputContext, const std::string &word);
  
      FCITX_ADDON_DEPENDENCY_LOADER(cloudpinyin, instance_->addonManager());
      FCITX_ADDON_DEPENDENCY_LOADER(pinyinhelper, instance_->addonManager());
-@@ -515,6 +538,8 @@ private:
+@@ -515,6 +540,8 @@ private:
      std::unique_ptr<EventSource> deferredPreload_;
      std::unique_ptr<HandlerTableEntry<EventHandler>> event_;
      CustomPhraseDict customPhrase_;
@@ -977,10 +1087,10 @@ index 9e69c5c..1e5f4d1 100644
                  dynamic_cast<const InsertableAsCustomPhraseInterface *>(
 diff --git a/im/pinyin/typedcodehistory.h b/im/pinyin/typedcodehistory.h
 new file mode 100644
-index 0000000..d90ada9
+index 0000000..d9a850d
 --- /dev/null
 +++ b/im/pinyin/typedcodehistory.h
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,312 @@
 +/*
 + * SPDX-FileCopyrightText: 2026-2026 Fcitx5 for Android Contributors
 + *
@@ -991,6 +1101,7 @@ index 0000000..d90ada9
 +#define _PINYIN_TYPEDCODEHISTORY_H_
 +
 +#include <algorithm>
++#include <array>
 +#include <cmath>
 +#include <cstddef>
 +#include <cstdint>
@@ -1150,6 +1261,26 @@ index 0000000..d90ada9
 +            return lhs.stamp > rhs.stamp;
 +        });
 +        return words;
++    }
++
++    // How often each letter a-z followed input in codes committed before,
++    // weighted by commit count.
++    std::array<uint64_t, 26> nextLetterCounts(std::string_view input) const {
++        std::array<uint64_t, 26> counts{};
++        const auto prefix = key(input);
++        for (const auto &[code, words] : codes_) {
++            if (code.size() <= prefix.size() || !code.starts_with(prefix)) {
++                continue;
++            }
++            const char next = code[prefix.size()];
++            if (next < 'a' || next > 'z') {
++                continue;
++            }
++            for (const auto &w : words) {
++                counts[next - 'a'] += w.count;
++            }
++        }
++        return counts;
 +    }
 +
 +    // One entry per line: code<TAB>word<TAB>count<TAB>stamp
