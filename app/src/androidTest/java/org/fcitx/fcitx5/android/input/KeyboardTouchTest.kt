@@ -260,6 +260,45 @@ class KeyboardTouchTest {
     }
 
     @Test
+    fun capsLockStaysWhileComposing() {
+        val caps = viewRect(org.fcitx.fcitx5.android.R.id.button_caps)
+        val g = keyRect('g')
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        Thread.sleep(100)
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        Thread.sleep(400)
+        // composing upper case is typing English: shift stays caps lock, not the separator
+        instrumentation.runOnMainSync { keyboard.onPreeditEmptyStateUpdate(false) }
+        tap(g.exactCenterX(), g.exactCenterY())
+        assertEquals(listOf("G"), typed())
+        // a tap unlocks, then shift is the separator again
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        Thread.sleep(400)
+        tap(g.exactCenterX(), g.exactCenterY())
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        assertEquals(listOf("G", "g", "'"), typed())
+        instrumentation.runOnMainSync { keyboard.onPreeditEmptyStateUpdate(true) }
+    }
+
+    @Test
+    fun longPressOnSeparatorLocksCaps() {
+        val caps = viewRect(org.fcitx.fcitx5.android.R.id.button_caps)
+        val g = keyRect('g')
+        val h = keyRect('h')
+        instrumentation.runOnMainSync { keyboard.onPreeditEmptyStateUpdate(false) }
+        down(0, caps.exactCenterX(), caps.exactCenterY())
+        Thread.sleep(800)
+        up(0)
+        Thread.sleep(400)
+        tap(g.exactCenterX(), g.exactCenterY())
+        tap(h.exactCenterX(), h.exactCenterY())
+        // no separator typed, letters upper case for mixed input
+        assertEquals(listOf("G", "H"), typed())
+        tap(caps.exactCenterX(), caps.exactCenterY())
+        instrumentation.runOnMainSync { keyboard.onPreeditEmptyStateUpdate(true) }
+    }
+
+    @Test
     fun shiftDoubleTapLocks() {
         val caps = viewRect(org.fcitx.fcitx5.android.R.id.button_caps)
         val g = keyRect('g')

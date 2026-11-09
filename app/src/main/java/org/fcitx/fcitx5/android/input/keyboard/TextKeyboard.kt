@@ -115,7 +115,9 @@ class TextKeyboard(
      * Shift acts on touch down like Google Pinyin: off -> shifted at once, letters typed while
      * holding shift are upper case and shift turns off when released (chording), a second tap
      * within 300ms locks it on touch down, a tap while shifted or locked turns it off.
-     * While composing, shift is the syllable separator (see [onAction]).
+     * While composing, shift is the syllable separator (see [onAction]), unless caps is locked:
+     * then English is being typed and shift stays caps lock. A long press on the separator locks
+     * caps, for mixed input with exact case.
      */
     private fun setupGooglePinyinShift() {
         caps.doubleTapEnabled = false
@@ -137,9 +139,12 @@ class TextKeyboard(
         updateAlphabetKeys()
     }
 
+    /** Whether shift types the syllable separator */
+    private val separatorMode get() = composing && capsState != CapsState.Lock
+
     private fun onShiftDown() {
-        shiftDownWhileComposing = composing
-        if (composing) return
+        shiftDownWhileComposing = separatorMode
+        if (shiftDownWhileComposing) return
         val now = SystemClock.uptimeMillis()
         shiftHeld = true
         typedWhileShiftHeld = false
@@ -215,7 +220,13 @@ class TextKeyboard(
                 }
             }
             is KeyAction.CapsAction -> {
-                if (shiftDownWhileComposing || composing) {
+                // decided on touch down: a tap unlocking caps while composing is no separator
+                if (shiftDownWhileComposing) {
+                    // long press: caps lock, for upper case in mixed input
+                    if (action.lock) {
+                        setCapsState(CapsState.Lock)
+                        return
+                    }
                     // Google Pinyin: while composing, shift is the syllable separator
                     transformed = KeyAction.FcitxKeyAction("'")
                 } else {
@@ -314,7 +325,7 @@ class TextKeyboard(
 
     private fun updateCapsButtonIcon() {
         caps.img.apply {
-            imageResource = if (composing) R.drawable.ic_pinyin_separator else when (capsState) {
+            imageResource = if (separatorMode) R.drawable.ic_pinyin_separator else when (capsState) {
                 CapsState.None -> R.drawable.ic_capslock_none
                 CapsState.Once -> R.drawable.ic_capslock_once
                 CapsState.Lock -> R.drawable.ic_capslock_lock

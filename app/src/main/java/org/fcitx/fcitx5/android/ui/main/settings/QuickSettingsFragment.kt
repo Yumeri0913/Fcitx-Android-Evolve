@@ -251,6 +251,12 @@ class QuickSettingsFragment : PaddingPreferenceFragment() {
             switch("中文联想", "根据上一个字词提供建议", { pinyinCfg?.bool("Prediction") == true }) {
                 updatePinyin { setBool("Prediction", it) }
             }
+            // off like Google Pinyin: v stays pinyin, so vpn, vip, vivo are typed like any word
+            switch("V 键快速输入", "开头的 v 进入快速输入，关闭时 v 照常打拼音", {
+                pinyinCfg?.bool("VAsQuickphrase") == true
+            }) {
+                updatePinyin { setBool("VAsQuickphrase", it) }
+            }
             val master = switch("模糊拼音", null, { fuzzyEnabled() }) { on ->
                 // like Google Pinyin, turning it on enables its default pairs
                 updatePinyin { fuzzyPairs.forEach { (_, key, default) -> setBool("Fuzzy/$key", on && default) } }

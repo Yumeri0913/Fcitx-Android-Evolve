@@ -92,7 +92,7 @@ abstract class BaseKeyboard(
     // a rather large threshold effectively disables swipe of the direction
     private val disabledSwipeThreshold = dp(800f)
 
-    private val keyRows: List<ConstraintLayout>
+    protected val keyRows: List<ConstraintLayout>
 
     init {
         isMotionEventSplittingEnabled = true
@@ -156,7 +156,7 @@ abstract class BaseKeyboard(
         spaceSwipeMoveCursor.registerOnChangeListener(spaceSwipeChangeListener)
     }
 
-    private fun createKeyView(def: KeyDef): KeyView {
+    protected fun createKeyView(def: KeyDef): KeyView {
         return when (def.appearance) {
             is KeyDef.Appearance.AltText -> AltTextKeyView(context, theme, def.appearance)
             is KeyDef.Appearance.ImageText -> ImageTextKeyView(context, theme, def.appearance)
